@@ -96,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeLauncher() -> Launcher {
         Launcher(provider: provider, config: config,
+                 localize: L10n.string,
                  warn: { message in DispatchQueue.main.async { MainActor.assumeIsolated { HUD.show(message) } } })
     }
 
@@ -170,8 +171,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             else { return } // window stuck, app gone, or user-closed → nothing to warn about
             self.warnedSingleWindowBundleIDs.insert(bundleID)
             let name = target.name ?? bundleID
-            HUD.show("\(name): the new window didn’t stay open. This app looks single-window by design. "
-                     + "Right-click it → “When open elsewhere” → “Quit there and reopen here” or “Show a warning”.",
+            HUD.show(L10n.format(
+                "%@: the new window didn’t stay open. This app looks single-window by design. "
+                + "Right-click it → “When open elsewhere” → “Quit there and reopen here” or “Show a "
+                + "warning”.", String(describing: name)),
                      icon: Self.appIcon(forBundleID: bundleID))
         }
     }
@@ -502,9 +505,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func warnFasterSwitchNeedsAccessibility() {
-        HUD.show("Faster desktop switch needs Accessibility. Grant Powerspaces in "
-                 + "System Settings ▸ Privacy & Security ▸ Accessibility, and it turns "
-                 + "on by itself.",
+        HUD.show(L10n.string(
+            "Faster desktop switch needs Accessibility. Grant Powerspaces in System Settings ▸ "
+            + "Privacy & Security ▸ Accessibility, and it turns on by itself."),
                  force: true)
     }
 
@@ -559,8 +562,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// leaves every other desktop (and every other screen) on the default color.
     private func editDockColor(forDisplay displayUUID: String) {
         guard let uuid = spaceUUID(forDisplay: displayUUID) else {
-            HUD.show("Couldn't tell which desktop is on that screen, so the dock color can't be "
-                     + "set here. Try again in a moment.", force: true)
+            HUD.show(L10n.string(
+                "Couldn't tell which desktop is on that screen, so the dock color can't be set here. "
+                + "Try again in a moment."), force: true)
             return
         }
         DockColorWindowController.show(spaceUUID: uuid)
@@ -580,6 +584,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyLauncherHotkey() {
         let hotkey = Preferences.shared.launcherHotkey
         launcherHotkey.apply(keyCode: hotkey.keyCode, modifiers: hotkey.carbonModifiers)
+    }
+
+    /// 语言变化仅刷新菜单与程序坞文案，避免重装快捷键或改写系统 Dock 偏好。
+    @objc private func languageDidChange() {
+        statusItemController.sync()
+        docks.values.forEach { $0.applyAppearance() }
+        refresh()
     }
 
     @objc private func preferencesDidChange() {
@@ -657,6 +668,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupObservers() {
+        NotificationCenter.default.addObserver(self, selector: #selector(languageDidChange),
+                                                name: .appLanguageDidChange, object: nil)
         let nc = NSWorkspace.shared.notificationCenter
         let names: [NSNotification.Name] = [
             NSWorkspace.activeSpaceDidChangeNotification,

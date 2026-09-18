@@ -12,9 +12,12 @@ import SwiftUI
 /// drop back to a menu-bar accessory once it closes. Subclasses keep their own
 /// `static shared` instance and supply the title, style, and hosted content.
 class ActivatingWindowController: NSWindowController, NSWindowDelegate {
+    private let titleKey: String
+
     init(title: String, styleMask: NSWindow.StyleMask, content: NSViewController) {
+        titleKey = title
         let window = NSWindow(contentViewController: content)
-        window.title = title
+        window.title = L10n.string(title)
         window.styleMask = styleMask
         window.isReleasedWhenClosed = false
         // Reused singleton window: on reopen, come to the desktop the user is on
@@ -26,10 +29,17 @@ class ActivatingWindowController: NSWindowController, NSWindowDelegate {
         window.center()
         super.init(window: window)
         window.delegate = self
+        NotificationCenter.default.addObserver(self, selector: #selector(updateLocalizedTitle),
+                                                name: .appLanguageDidChange, object: nil)
         AppActivation.enter() // become a regular app so the window can take focus
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// 语言变化后重译窗口标题，保持窗口位置和激活状态不变。
+    @objc private func updateLocalizedTitle() {
+        window?.title = L10n.string(titleKey)
+    }
 
     /// Activate the app and bring the single window forward.
     func bringToFront() {

@@ -38,9 +38,9 @@ private struct ShortcutsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                group("App Launcher", launcherRows)
-                group("Dock", dockRows)
-                group("Menu bar", menuRows)
+                group(L10n.string("App Launcher"), launcherRows)
+                group(L10n.string("Dock"), dockRows)
+                group(L10n.string("Menu bar"), menuRows)
             }
             .padding(20)
         }
@@ -49,35 +49,35 @@ private struct ShortcutsView: View {
 
     private var launcherRows: [(String, String)] {
         let open = prefs.launcherHotkey == .off
-            ? ("Not set", "Open the App Launcher (choose a shortcut in Preferences \u{25B8} Behavior)")
-            : (prefs.launcherHotkey.label, "Open the App Launcher from anywhere")
+            ? (L10n.string("Not set"), L10n.string("Open the App Launcher (choose a shortcut in Preferences ▸ Behavior)"))
+            : (prefs.launcherHotkey.label, L10n.string("Open the App Launcher from anywhere"))
         return [
             open,
-            ("Type", "Search your apps"),
-            ("\u{2191} \u{2193} \u{2190} \u{2192}", "Move the selection"),
-            ("Return", "Open the selected app on this desktop"),
-            ("\u{2318}Return", "Open it in a new window"),
-            ("Esc", "Close the launcher"),
-            ("Drag a tile to the bar", "Pin that app to this desktop"),
+            (L10n.string("Type"), L10n.string("Search your apps")),
+            ("\u{2191} \u{2193} \u{2190} \u{2192}", L10n.string("Move the selection")),
+            ("Return", L10n.string("Open the selected app on this desktop")),
+            ("\u{2318}Return", L10n.string("Open it in a new window")),
+            ("Esc", L10n.string("Close the launcher")),
+            (L10n.string("Drag a tile to the bar"), L10n.string("Pin that app to this desktop")),
         ]
     }
 
     private var dockRows: [(String, String)] {
         [
-            ("Click", "Open or focus the app on this desktop"),
-            ("\(prefs.forceNewModifier.label)-click", "Open a new window on this desktop"),
-            ("Middle-click", prefs.middleClickAction.label),
-            ("Right-click", "App menu: pin, new-window rule, quit"),
-            ("Hold, then drag", "Reorder the icons"),
-            ("Drag an app onto the bar", "Pin it to this desktop"),
+            (L10n.string("Click"), L10n.string("Open or focus the app on this desktop")),
+            (L10n.format("%@-click", String(describing: prefs.forceNewModifier.label)), L10n.string("Open a new window on this desktop")),
+            (L10n.string("Middle-click"), prefs.middleClickAction.label),
+            (L10n.string("Right-click"), L10n.string("App menu: pin, new-window rule, quit")),
+            (L10n.string("Hold, then drag"), L10n.string("Reorder the icons")),
+            (L10n.string("Drag an app onto the bar"), L10n.string("Pin it to this desktop")),
         ]
     }
 
     private var menuRows: [(String, String)] {
         [
-            ("\u{2318}R", "Refresh the dock"),
-            ("\u{2318},", "Open Preferences"),
-            ("\u{2318}Q", "Quit Powerspaces"),
+            ("\u{2318}R", L10n.string("Refresh the dock")),
+            ("\u{2318},", L10n.string("Open Preferences")),
+            ("\u{2318}Q", L10n.string("Quit Powerspaces")),
         ]
     }
 

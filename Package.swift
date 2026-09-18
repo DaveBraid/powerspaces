@@ -9,6 +9,7 @@ let concurrencyWarnings: [SwiftSetting] = [.enableUpcomingFeature("StrictConcurr
 
 let package = Package(
     name: "powerspaces",
+    defaultLocalization: "en",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "SpaceKit", targets: ["SpaceKit"]),
@@ -27,7 +28,8 @@ let package = Package(
         .target(name: "CSpaceSwitch",
                 linkerSettings: [.linkedFramework("ApplicationServices")]),
         .executableTarget(name: "powerspaces", dependencies: ["SpaceKit"], swiftSettings: concurrencyWarnings),
-        .executableTarget(name: "PowerspacesApp", dependencies: ["SpaceKit", "CSpaceSwitch"], swiftSettings: concurrencyWarnings),
+        .executableTarget(name: "PowerspacesApp", dependencies: ["SpaceKit", "CSpaceSwitch"],
+                          resources: [.process("Resources")], swiftSettings: concurrencyWarnings),
         .executableTarget(name: "SpaceKitTestRunner", dependencies: ["SpaceKit"], swiftSettings: concurrencyWarnings),
     ],
     swiftLanguageModes: [.v5]

@@ -96,7 +96,7 @@ extension Launcher {
     /// the caller then raises just the fresh window, which is on the current Space.
     func openApp(_ target: AppTarget, newInstance: Bool, background: Bool = false) {
         guard let url = AppResolver.appURL(for: target) else {
-            warn("could not find application for \(target.bundleID ?? target.name ?? "?")")
+            warn(localizedMessage("could not find application for %@", String(describing: target.bundleID ?? target.name ?? "?")))
             return
         }
         // Shell out to /usr/bin/open synchronously — NSWorkspace.openApplication
@@ -134,7 +134,7 @@ extension Launcher {
             try process.run()
             if wait { process.waitUntilExit() }
         } catch {
-            warn("failed to run \(executable.lastPathComponent): \(error)")
+            warn(localizedMessage("failed to run %@: %@", String(describing: executable.lastPathComponent), String(describing: error)))
         }
     }
 

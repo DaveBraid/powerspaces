@@ -35,13 +35,14 @@ final class AboutWindowController: ActivatingWindowController {
 /// `swift run`, where there's no Info.plist), a one-line tagline, a button to the
 /// GitHub page, and the GPL-3.0 license line.
 private struct AboutView: View {
+    @ObservedObject private var languagePreferences = Preferences.shared
     private static let repoURL = URL(string: "https://github.com/sebastianpdw/powerspaces")!
     private static let licenseURL = URL(string: "https://www.gnu.org/licenses/gpl-3.0.html")!
 
     /// "Version 1.0" from the bundle; nil when unbundled (so the line is dropped).
     private var versionText: String? {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String)
-            .map { "Version \($0)" }
+            .map { L10n.format("Version %@", String(describing: $0)) }
     }
 
     var body: some View {
@@ -56,17 +57,17 @@ private struct AboutView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
-            Text("Per-desktop docks and smart launching for macOS.")
+            Text(L10n.string("Per-desktop docks and smart launching for macOS."))
                 .font(.callout)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button("View on GitHub") { NSWorkspace.shared.open(Self.repoURL) }
+            Button(L10n.string("View on GitHub")) { NSWorkspace.shared.open(Self.repoURL) }
                 .keyboardShortcut(.defaultAction)
 
             HStack(spacing: 4) {
-                Text("Licensed under")
+                Text(L10n.string("Licensed under"))
                     .foregroundStyle(.secondary)
                 Link("GPL-3.0 ↗", destination: Self.licenseURL)
             }

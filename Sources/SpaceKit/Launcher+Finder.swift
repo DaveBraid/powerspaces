@@ -24,9 +24,9 @@ extension Launcher {
             openNewFinderWindow()
             return
         }
-        warn("couldn't make a new window for \(displayName(for: target)) via AppleScript. "
-             + "Grant powerspaces Automation access in System Settings ▸ Privacy & "
-             + "Security ▸ Automation, then try again.")
+        warn(localizedMessage(
+            "couldn't make a new window for %@ via AppleScript. Grant powerspaces Automation access "
+            + "in System Settings ▸ Privacy & Security ▸ Automation, then try again.", String(describing: displayName(for: target))))
     }
 
     /// Open a Finder window the reliable way: ask LaunchServices to open a folder.

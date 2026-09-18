@@ -47,6 +47,7 @@ final class LauncherKeyboard: ObservableObject {
 /// `.app`-drop pipeline handles the pin, so no extra wiring is needed here).
 /// The first app is selected on open and the arrow keys move the selection.
 struct AppLauncherView: View {
+    @ObservedObject private var languagePreferences = Preferences.shared
     /// The cached, off-main-loaded app list + recents the grid renders.
     @ObservedObject var store: InstalledAppsStore
     /// Drives arrow-key navigation; the hosting panel feeds it key events.
@@ -60,7 +61,7 @@ struct AppLauncherView: View {
     /// focusing an existing one — same semantics as a ⌘-modified dock click.
     let onLaunch: (InstalledApp, Bool) -> Void
 
-    @State private var query = ""
+    @ViewState private var query = ""
     @FocusState private var searchFocused: Bool
 
     /// Tile sizing — kept in one place so the column-count math below matches
@@ -141,7 +142,7 @@ struct AppLauncherView: View {
         // isn't consumed for any reason, plain Return still launches (without
         // `forceNew`), so this degrades gracefully and never double-launches.
         .background(
-            Button("Open in new window") { launchSelected(forceNew: true) }
+            Button(L10n.string("Open in new window")) { launchSelected(forceNew: true) }
                 .keyboardShortcut(.return, modifiers: .command)
                 .opacity(0)
                 .accessibilityHidden(true)
@@ -154,7 +155,7 @@ struct AppLauncherView: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Search apps", text: $query)
+            TextField(L10n.string("Search apps"), text: $query)
                 .textFieldStyle(.plain)
                 .font(.title3)
                 .focused($searchFocused)
@@ -163,7 +164,7 @@ struct AppLauncherView: View {
                 Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .help("Clear search")
+                    .help(L10n.string("Clear search"))
             }
         }
         .padding(.horizontal, 16)
@@ -175,13 +176,13 @@ struct AppLauncherView: View {
         if store.apps.isEmpty {
             VStack(spacing: 8) {
                 ProgressView()
-                Text("Loading apps…").foregroundStyle(.secondary)
+                Text(L10n.string("Loading apps…")).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if filtered.isEmpty {
             VStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").font(.largeTitle).foregroundStyle(.tertiary)
-                Text("No apps match “\(query)”").foregroundStyle(.secondary)
+                Text(L10n.format("No apps match “%@”", String(describing: query))).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -218,9 +219,9 @@ struct AppLauncherView: View {
 
     private var footer: some View {
         HStack {
-            Text("\(filtered.count) app\(filtered.count == 1 ? "" : "s")")
+            Text(L10n.format(filtered.count == 1 ? "%@ app" : "%@ apps", String(filtered.count)))
             Spacer()
-            Label("↑↓←→ to select · Return to launch · ⌘Return for a new window · drag onto the bar to pin",
+            Label(L10n.string("↑↓←→ to select · Return to launch · ⌘Return for a new window · drag onto the bar to pin"),
                   systemImage: "hand.draw")
         }
         .font(.caption)
@@ -258,7 +259,7 @@ private struct AppTile: View {
     let highlightColor: Color
     /// `true` when ⌘ is held at click time — open the app in a new window.
     let onLaunch: (Bool) -> Void
-    @State private var hovered = false
+    @ViewState private var hovered = false
 
     var body: some View {
         VStack(spacing: 6) {

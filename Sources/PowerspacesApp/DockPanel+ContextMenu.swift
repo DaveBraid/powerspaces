@@ -31,27 +31,27 @@ extension DockPanel {
         // The launcher tile isn't an app: no pin/strategy/quit items, just open it
         // or turn the feature off.
         if app.isLauncher {
-            menu.addItem(item("Open App Launcher", #selector(openLauncherMenu(_:)), app, symbol: "square.grid.2x2"))
+            menu.addItem(item(L10n.string("Open App Launcher"), #selector(openLauncherMenu(_:)), app, symbol: "square.grid.2x2"))
             menu.addItem(.separator())
-            menu.addItem(item("Hide App Launcher", #selector(disableLauncherMenu(_:)), app, symbol: "eye.slash"))
+            menu.addItem(item(L10n.string("Hide App Launcher"), #selector(disableLauncherMenu(_:)), app, symbol: "eye.slash"))
             addDockColorItems(to: menu)
             popUpMenu(menu, from: button)
             return
         }
-        menu.addItem(item("Open new window", #selector(openNewWindow(_:)), app, symbol: "macwindow.badge.plus"))
+        menu.addItem(item(L10n.string("Open new window"), #selector(openNewWindow(_:)), app, symbol: "macwindow.badge.plus"))
         if app.bundleID != nil {
             menu.addItem(.separator())
             // For an all-desktops pin, "this desktop" toggles a per-desktop
             // exception (hide here / show here) instead of a local pin, so the app
             // stays pinned on every other desktop.
             if app.isPinnedEverywhere {
-                menu.addItem(item(app.isExcludedHere ? "Pin (this desktop)" : "Unpin (this desktop)",
+                menu.addItem(item(app.isExcludedHere ? L10n.string("Pin (this desktop)") : L10n.string("Unpin (this desktop)"),
                                   #selector(toggleHereForEverywhere(_:)), app, symbol: "pin"))
             } else {
-                menu.addItem(item(app.isPinnedHere ? "Unpin (this desktop)" : "Pin (this desktop)",
+                menu.addItem(item(app.isPinnedHere ? L10n.string("Unpin (this desktop)") : L10n.string("Pin (this desktop)"),
                                   #selector(togglePinHere(_:)), app, symbol: "pin"))
             }
-            menu.addItem(item(app.isPinnedEverywhere ? "Unpin (all desktops)" : "Pin (all desktops)",
+            menu.addItem(item(app.isPinnedEverywhere ? L10n.string("Unpin (all desktops)") : L10n.string("Pin (all desktops)"),
                               #selector(togglePinEverywhere(_:)), app, symbol: "pin.fill"))
         }
         if let bundleID = app.bundleID, let current = currentStrategy?(app) {
@@ -75,7 +75,7 @@ extension DockPanel {
             for kind in choices {
                 newWindowMenu.addItem(strategyItem(kind.label, kind, app, current))
             }
-            let newWindowParent = NSMenuItem(title: "New-window strategy", action: nil, keyEquivalent: "")
+            let newWindowParent = NSMenuItem(title: L10n.string("New-window strategy"), action: nil, keyEquivalent: "")
             newWindowParent.submenu = newWindowMenu
             menu.addItem(newWindowParent)
 
@@ -88,7 +88,7 @@ extension DockPanel {
             // apps, where it's experimental and they can refine it via
             // "New-window strategy" above.
             let isSingle = SingleInstance.isSingleInstance(bundleID: bundleID)
-            let newWindowLabel = isSingle ? "Open a new window (experimental)" : "Open a new window"
+            let newWindowLabel = isSingle ? L10n.string("Open a new window (experimental)") : L10n.string("Open a new window")
             let newWindowKind: StrategyKind
             if current.makesNewWindow {
                 newWindowKind = current
@@ -98,9 +98,9 @@ extension DockPanel {
             }
             submenu.addItem(strategyItem(newWindowLabel, newWindowKind, app, current))
             submenu.addItem(.separator())
-            submenu.addItem(strategyItem("Show a warning", .warn, app, current))
-            submenu.addItem(strategyItem("Quit there and reopen here", .quitReopen, app, current))
-            let parent = NSMenuItem(title: "When open elsewhere", action: nil, keyEquivalent: "")
+            submenu.addItem(strategyItem(L10n.string("Show a warning"), .warn, app, current))
+            submenu.addItem(strategyItem(L10n.string("Quit there and reopen here"), .quitReopen, app, current))
+            let parent = NSMenuItem(title: L10n.string("When open elsewhere"), action: nil, keyEquivalent: "")
             parent.submenu = submenu
             menu.addItem(parent)
         }
@@ -108,10 +108,10 @@ extension DockPanel {
         // When this icon stands for one specific window (the "Windows" feature),
         // offer to close just that window — distinct from quitting the app.
         if app.windowID != nil {
-            menu.addItem(item("Close this window", #selector(closeWindow(_:)), app, symbol: "xmark"))
+            menu.addItem(item(L10n.string("Close this window"), #selector(closeWindow(_:)), app, symbol: "xmark"))
         }
-        menu.addItem(item("Quit (this desktop)", #selector(closeThisDesktop(_:)), app, symbol: "xmark.circle"))
-        menu.addItem(item("Quit (all desktops)", #selector(closeAllDesktops(_:)), app, symbol: "xmark.octagon"))
+        menu.addItem(item(L10n.string("Quit (this desktop)"), #selector(closeThisDesktop(_:)), app, symbol: "xmark.circle"))
+        menu.addItem(item(L10n.string("Quit (all desktops)"), #selector(closeAllDesktops(_:)), app, symbol: "xmark.octagon"))
         addDockColorItems(to: menu)
         popUpMenu(menu, from: button)
     }
@@ -129,7 +129,7 @@ extension DockPanel {
         }
         addDockColorItems(to: menu)
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit Powerspaces",
+        let quit = NSMenuItem(title: L10n.string("Quit Powerspaces"),
                               action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         quit.target = NSApp
         quit.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: nil)
@@ -147,7 +147,7 @@ extension DockPanel {
     /// color sits at the very top without ever leaving a stray divider.
     private func addDockColorItems(to menu: NSMenu) {
         var items: [NSMenuItem] = []
-        let change = NSMenuItem(title: "Change dock color (this desktop)…",
+        let change = NSMenuItem(title: L10n.string("Change dock color (this desktop)…"),
                                 action: #selector(editDockColor(_:)), keyEquivalent: "")
         change.target = self
         change.image = NSImage(systemSymbolName: "paintpalette", accessibilityDescription: nil)
@@ -166,7 +166,7 @@ extension DockPanel {
     /// dock's menus uncluttered. Returns `nil` when the menu-bar icon is showing.
     private func preferencesItemIfMenuBarHidden() -> NSMenuItem? {
         guard Preferences.shared.menuGlyph.hidesStatusItem else { return nil }
-        let menuItem = NSMenuItem(title: "Open Preferences…",
+        let menuItem = NSMenuItem(title: L10n.string("Open Preferences…"),
                                   action: #selector(openPreferencesMenu(_:)), keyEquivalent: "")
         menuItem.target = self
         menuItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)

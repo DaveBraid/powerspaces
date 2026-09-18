@@ -66,22 +66,22 @@ final class StatusItemController: NSObject, NSMenuItemValidation {
 
     private func makeStatusMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(menuItem("Refresh Dock", #selector(refreshAction), key: "r", symbol: "arrow.clockwise"))
-        menu.addItem(menuItem("Preferences…", #selector(openPreferences), key: ",", symbol: "gearshape"))
-        menu.addItem(menuItem("Keyboard Shortcuts…", #selector(showShortcuts), symbol: "keyboard"))
+        menu.addItem(menuItem(L10n.string("Refresh Dock"), #selector(refreshAction), key: "r", symbol: "arrow.clockwise"))
+        menu.addItem(menuItem(L10n.string("Preferences…"), #selector(openPreferences), key: ",", symbol: "gearshape"))
+        menu.addItem(menuItem(L10n.string("Keyboard Shortcuts…"), #selector(showShortcuts), symbol: "keyboard"))
         menu.addItem(.separator())
         // The common toggles, surfaced here so they're reachable without opening
         // Preferences. `hide/show` items carry a checkmark for their current state,
         // refreshed each time the menu opens by `validateMenuItem`.
-        menu.addItem(menuItem("Show App Launcher", #selector(toggleAppLauncher(_:)), symbol: "square.grid.2x2"))
-        menu.addItem(menuItem("Hide macOS Dock", #selector(toggleAppleDock(_:)), symbol: "dock.rectangle"))
+        menu.addItem(menuItem(L10n.string("Show App Launcher"), #selector(toggleAppLauncher(_:)), symbol: "square.grid.2x2"))
+        menu.addItem(menuItem(L10n.string("Hide macOS Dock"), #selector(toggleAppleDock(_:)), symbol: "dock.rectangle"))
         menu.addItem(makeFasterSwitchItem())
         menu.addItem(.separator())
-        menu.addItem(menuItem("Hide Menu-Bar Icon", #selector(hideMenuBarIcon(_:)), symbol: "eye.slash"))
-        menu.addItem(menuItem("Reset Accessibility Permission…", #selector(resetPermissions(_:)), symbol: "arrow.counterclockwise"))
+        menu.addItem(menuItem(L10n.string("Hide Menu-Bar Icon"), #selector(hideMenuBarIcon(_:)), symbol: "eye.slash"))
+        menu.addItem(menuItem(L10n.string("Reset Accessibility Permission…"), #selector(resetPermissions(_:)), symbol: "arrow.counterclockwise"))
         menu.addItem(.separator())
-        menu.addItem(menuItem("About Powerspaces", #selector(showAbout), symbol: "info.circle"))
-        let quit = NSMenuItem(title: "Quit Powerspaces",
+        menu.addItem(menuItem(L10n.string("About Powerspaces"), #selector(showAbout), symbol: "info.circle"))
+        let quit = NSMenuItem(title: L10n.string("Quit Powerspaces"),
                               action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: nil)
         menu.addItem(quit)
@@ -104,9 +104,9 @@ final class StatusItemController: NSObject, NSMenuItemValidation {
     /// The submenu items still target `self`, so `validateMenuItem` ticks them.
     private func makeFasterSwitchItem() -> NSMenuItem {
         let submenu = NSMenu()
-        submenu.addItem(menuItem("Swipe (four-finger)", #selector(toggleFasterSwipe(_:))))
-        submenu.addItem(menuItem("Keyboard shortcut", #selector(toggleFasterKeyboard(_:))))
-        let item = NSMenuItem(title: "Faster Desktop Switch", action: nil, keyEquivalent: "")
+        submenu.addItem(menuItem(L10n.string("Swipe (four-finger)"), #selector(toggleFasterSwipe(_:))))
+        submenu.addItem(menuItem(L10n.string("Keyboard shortcut"), #selector(toggleFasterKeyboard(_:))))
+        let item = NSMenuItem(title: L10n.string("Faster Desktop Switch"), action: nil, keyEquivalent: "")
         item.image = NSImage(systemSymbolName: "bolt", accessibilityDescription: nil)
         item.submenu = submenu
         return item
@@ -186,8 +186,9 @@ final class StatusItemController: NSObject, NSMenuItemValidation {
     /// even if warning banners are turned off. Deferred to the next runloop so we're
     /// not tearing down this very menu's status item from inside its own action.
     @objc private func hideMenuBarIcon(_ sender: NSMenuItem) {
-        HUD.show("Menu-bar icon hidden. To open Preferences again, right-click the "
-                 + "Powerspaces dock and choose “Open Preferences”.", force: true)
+        HUD.show(L10n.string(
+            "Menu-bar icon hidden. To open Preferences again, right-click the Powerspaces dock and "
+            + "choose “Open Preferences”."), force: true)
         DispatchQueue.main.async { Preferences.shared.menuGlyph = .hidden }
     }
 

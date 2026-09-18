@@ -6,6 +6,7 @@ launch/activation leaks in the Dock and launchers.
 
 ## Start here
 
+- **[macOS 27 汉化版](zh-CN.md)**：中英文切换、验证、自行构建、从 Homebrew 版迁移与回退。
 - **[User guide](user-guide.md)**: the short version covering what it does, how to install
   it, and the handful of things worth knowing. Read this first.
 - [Extensive user guide](user-guide-extensive.md): every feature, every

@@ -455,7 +455,7 @@ final class DockPanel: NSPanel {
     /// rebuild like any other item.
     private func addEmptyHintIfNeeded() {
         guard stack.arrangedSubviews.isEmpty else { return }
-        let hint = NSTextField(labelWithString: "Drag an app here to pin it")
+        let hint = NSTextField(labelWithString: L10n.string("Drag an app here to pin it"))
         hint.font = .systemFont(ofSize: NSFont.preferredFont(forTextStyle: .callout).pointSize)
         hint.textColor = .secondaryLabelColor
         hint.alignment = .center
@@ -597,6 +597,7 @@ final class DockPanel: NSPanel {
                                      highlightColor: prefs.boxHighlightColor)
             }
             button.app = app
+            button.setAccessibilityLabel(app.isLauncher ? L10n.string("App Launcher") : app.name)
             button.slotKey = slotKey
             if labeled { applyLabel(to: button, app: app, side: side) }
             // A window-count badge for an app with several windows here — but only
@@ -1099,7 +1100,7 @@ final class DockPanel: NSPanel {
     // MARK: - Rendering helpers
 
     private func tooltip(for app: DockApp) -> String {
-        if app.isLauncher { return "App Launcher (all applications)" }
+        if app.isLauncher { return L10n.string("App Launcher (all applications)") }
         // In a per-window mode each item already stands for a single window (and
         // a labeled item shows its full title below), so the "(2)" count would be
         // redundant/misleading on each copy.
@@ -1108,8 +1109,8 @@ final class DockPanel: NSPanel {
         var text = (prefs.showsWindowLabel(windowCount: app.windowCount) ? app.title : nil) ?? app.name
         if app.windowCount > 1, !perWindow { text += " (\(app.windowCount))" }
         if app.isPinnedEverywhere {
-            text += app.isExcludedHere ? " (pinned everywhere, hidden here)" : " (pinned everywhere)"
-        } else if app.isPinnedHere { text += " (pinned)" }
+            text += app.isExcludedHere ? L10n.string(" (pinned everywhere, hidden here)") : L10n.string(" (pinned everywhere)")
+        } else if app.isPinnedHere { text += L10n.string(" (pinned)") }
         return text
     }
 

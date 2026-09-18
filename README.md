@@ -4,6 +4,8 @@
 
 # powerspaces
 
+**本 fork：macOS 27 中文适配。** [语言设置、自行构建与 Homebrew 切换说明](docs/zh-CN.md)。当前仅进行汉化，保留上游外观和窗口行为。
+
 **Make macOS Spaces behave like Microsoft Windows virtual desktops.** Every
 desktop is isolated, with its own dock, and no more getting *yanked* to a different
 desktop just because you clicked an app or searched for one. Powerspaces calls

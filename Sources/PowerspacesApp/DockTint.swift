@@ -88,26 +88,25 @@ struct DockColorView: View {
     var body: some View {
         Form {
             Section {
-                ColorPicker("Dock color", selection: Binding(
+                ColorPicker(L10n.string("Dock color"), selection: Binding(
                     // Start from this desktop's override, else the default color (an
                     // opaque grey) — so opening the editor fresh shows a solid grey
                     // dock, never a transparent swatch.
                     get: { Color(nsColor: prefs.dockTintOverride(forSpace: model.spaceUUID) ?? prefs.dockTintColor) },
                     set: { prefs.setDockTintOverride(NSColor($0), forSpace: model.spaceUUID) }
                 ), supportsOpacity: true)
-                    .help("The dock's color on this desktop. Lower the opacity to let more of "
-                          + "the blurred background show through.")
-                Button("Reset to Default") {
+                    .help(L10n.string("The dock's color on this desktop. Lower the opacity to let more of the blurred background show through."))
+                Button(L10n.string("Reset to Default")) {
                     prefs.setDockTintOverride(nil, forSpace: model.spaceUUID)
                 }
                 .disabled(prefs.dockTintOverride(forSpace: model.spaceUUID) == nil)
-                .help("Remove this desktop's custom color so it follows the default dock "
-                      + "color from Preferences again.")
+                .help(L10n.string("Remove this desktop's custom color so it follows the default dock color from Preferences again."))
             } header: {
-                Text("This desktop")
+                Text(L10n.string("This desktop"))
             } footer: {
-                Text("Sets the dock's color and opacity for this desktop only, overriding the "
-                     + "default in Preferences. Other desktops keep the default.")
+                Text(L10n.string(
+                    "Sets the dock's color and opacity for this desktop only, overriding the default "
+                    + "in Preferences. Other desktops keep the default."))
             }
         }
         .formStyle(.grouped)

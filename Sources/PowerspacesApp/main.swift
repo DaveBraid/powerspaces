@@ -4,6 +4,21 @@
 
 import AppKit
 
+// 本地化验证和预览均在正式启动前分流，不注册桌面监听或改写系统偏好。
+if CommandLine.arguments.contains("--check-localization") {
+    exit(DevelopmentTools.checkLocalization() ? 0 : 1)
+}
+if DevelopmentTools.isPreview {
+    let app = NSApplication.shared
+    let previewDelegate = SettingsPreviewDelegate()
+    app.delegate = previewDelegate
+    let strategies = StrategySettingsController(
+        url: DevelopmentTools.previewDirectory.appendingPathComponent("config.json"))
+    PreferencesWindowController.show(strategies: strategies)
+    app.run()
+    exit(0)
+}
+
 // Headless icon export for packaging: `PowerspacesApp --export-iconset <dir>`
 // renders the app icon into a .iconset (used by scripts/make-app.sh) and exits
 // before any UI is created.

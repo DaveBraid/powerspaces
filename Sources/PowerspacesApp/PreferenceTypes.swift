@@ -37,10 +37,10 @@ enum BarPosition: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .bottom: return "Bottom"
-        case .top: return "Top"
-        case .left: return "Left"
-        case .right: return "Right"
+        case .bottom: return L10n.string("Bottom")
+        case .top: return L10n.string("Top")
+        case .left: return L10n.string("Left")
+        case .right: return L10n.string("Right")
         }
     }
     /// Left/right bars run along a vertical edge, so the dock lays its icons out
@@ -56,8 +56,8 @@ enum DockScreensMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .allScreens: return "All screens"
-        case .selectedScreens: return "Selected screens"
+        case .allScreens: return L10n.string("All screens")
+        case .selectedScreens: return L10n.string("Selected screens")
         }
     }
 }
@@ -75,10 +75,10 @@ enum BarMaterial: String, CaseIterable, Identifiable {
     }
     var label: String {
         switch self {
-        case .hud: return "HUD (default)"
-        case .darker: return "Darker"
-        case .lighter: return "Lighter"
-        case .solid: return "Solid"
+        case .hud: return L10n.string("HUD (default)")
+        case .darker: return L10n.string("Darker")
+        case .lighter: return L10n.string("Lighter")
+        case .solid: return L10n.string("Solid")
         }
     }
 }
@@ -86,7 +86,7 @@ enum BarMaterial: String, CaseIterable, Identifiable {
 enum HUDPosition: String, CaseIterable, Identifiable {
     case top, bottom, center
     var id: String { rawValue }
-    var label: String { rawValue.capitalized }
+    var label: String { L10n.string(rawValue.capitalized) }
 }
 
 /// How running apps are told apart from pinned-but-not-running shortcuts.
@@ -99,8 +99,8 @@ enum RunningIndicator: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .dimmed: return "Dim not-running"
-        case .boxed: return "Box running"
+        case .dimmed: return L10n.string("Dim not-running")
+        case .boxed: return L10n.string("Box running")
         }
     }
 }
@@ -117,9 +117,9 @@ enum ForceNewModifier: String, CaseIterable, Identifiable {
     }
     var label: String {
         switch self {
-        case .shiftOrOption: return "Shift or Option"
-        case .shift: return "Shift only"
-        case .option: return "Option only"
+        case .shiftOrOption: return L10n.string("Shift or Option")
+        case .shift: return L10n.string("Shift only")
+        case .option: return L10n.string("Option only")
         }
     }
 }
@@ -132,11 +132,11 @@ enum MiddleClickAction: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .newWindow: return "Open a new window"
-        case .quitThisDesktop: return "Quit (this desktop)"
-        case .quitAllDesktops: return "Quit (all desktops)"
-        case .closeWindow: return "Close this window"
-        case .doNothing: return "Do nothing"
+        case .newWindow: return L10n.string("Open a new window")
+        case .quitThisDesktop: return L10n.string("Quit (this desktop)")
+        case .quitAllDesktops: return L10n.string("Quit (all desktops)")
+        case .closeWindow: return L10n.string("Close this window")
+        case .doNothing: return L10n.string("Do nothing")
         }
     }
 }
@@ -178,12 +178,12 @@ enum MenuGlyph: String, CaseIterable, Identifiable {
     }
     var label: String {
         switch self {
-        case .powerWindow: return "Power window (icon)"
-        case .squareDotted: return "Dashed square"
-        case .squareEmpty: return "Empty square"
-        case .overlap: return "Overlapping squares"
-        case .invisible: return "Invisible (clickable)"
-        case .hidden: return "Hidden (no icon)"
+        case .powerWindow: return L10n.string("Power window (icon)")
+        case .squareDotted: return L10n.string("Dashed square")
+        case .squareEmpty: return L10n.string("Empty square")
+        case .overlap: return L10n.string("Overlapping squares")
+        case .invisible: return L10n.string("Invisible (clickable)")
+        case .hidden: return L10n.string("Hidden (no icon)")
         }
     }
 }
@@ -194,11 +194,11 @@ enum WarningMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .short: return "2 seconds"
-        case .normal: return "Default (4s)"
-        case .long: return "6 seconds"
-        case .untilClicked: return "Until clicked"
-        case .custom: return "Custom…"
+        case .short: return L10n.string("2 seconds")
+        case .normal: return L10n.string("Default (4s)")
+        case .long: return L10n.string("6 seconds")
+        case .untilClicked: return L10n.string("Until clicked")
+        case .custom: return L10n.string("Custom…")
         }
     }
 }
@@ -213,8 +213,8 @@ enum WindowLabelScope: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .all: return "All apps"
-        case .multipleWindows: return "Only apps with multiple windows"
+        case .all: return L10n.string("All apps")
+        case .multipleWindows: return L10n.string("Only apps with multiple windows")
         }
     }
 }
@@ -239,10 +239,10 @@ enum IconAnimationStyle: String, CaseIterable, Identifiable {
     /// run both ways, like "Shrink / grow".
     var label: String {
         switch self {
-        case .fade: return "Fade out / in"
-        case .shrink: return "Shrink / grow"
-        case .poof: return "Poof out / in"
-        case .slideOff: return "Slide off / in"
+        case .fade: return L10n.string("Fade out / in")
+        case .shrink: return L10n.string("Shrink / grow")
+        case .poof: return L10n.string("Poof out / in")
+        case .slideOff: return L10n.string("Slide off / in")
         }
     }
 }
@@ -258,9 +258,9 @@ enum AutoHideAnimation: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .slide: return "Slide off edge"
-        case .fade: return "Fade"
-        case .slideFade: return "Slide + fade"
+        case .slide: return L10n.string("Slide off edge")
+        case .fade: return L10n.string("Fade")
+        case .slideFade: return L10n.string("Slide + fade")
         }
     }
     /// Whether the bar moves off the edge (vs. staying put and only fading).
@@ -282,9 +282,9 @@ enum FullscreenDockBehavior: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .hide: return "Hide"
-        case .autoHide: return "Auto-hide"
-        case .show: return "Show"
+        case .hide: return L10n.string("Hide")
+        case .autoHide: return L10n.string("Auto-hide")
+        case .show: return L10n.string("Show")
         }
     }
 }
@@ -298,8 +298,8 @@ enum DetailLevel: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .basic: return "Basic"
-        case .advanced: return "Advanced"
+        case .basic: return L10n.string("Basic")
+        case .advanced: return L10n.string("Advanced")
         }
     }
 }
@@ -340,7 +340,7 @@ enum LauncherHotkey: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .off: return "Off"
+        case .off: return L10n.string("Off")
         case .optionSpace: return "⌥Space"
         case .commandOptionSpace: return "⌘⌥Space"
         case .controlOptionSpace: return "⌃⌥Space"
@@ -367,10 +367,10 @@ enum DesktopIndicatorPosition: String, CaseIterable, Identifiable {
     var isInsideDock: Bool { self != .aboveDock }
     var label: String {
         switch self {
-        case .aboveDock: return "Above the dock"
-        case .dockLeading: return "In the dock, at the start"
-        case .dockTrailing: return "In the dock, at the end"
-        case .dockCenter: return "In the dock, centered"
+        case .aboveDock: return L10n.string("Above the dock")
+        case .dockLeading: return L10n.string("In the dock, at the start")
+        case .dockTrailing: return L10n.string("In the dock, at the end")
+        case .dockCenter: return L10n.string("In the dock, centered")
         }
     }
 }

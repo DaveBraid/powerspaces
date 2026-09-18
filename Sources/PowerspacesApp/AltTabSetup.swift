@@ -73,8 +73,8 @@ enum AltTabSetup {
         let version: String?
         let hasHomebrew: Bool
         var statusText: String {
-            guard installed else { return "Not installed" }
-            return version.map { "Installed (v\($0))" } ?? "Installed"
+            guard installed else { return L10n.string("Not installed") }
+            return version.map { L10n.format("Installed (v%@)", String(describing: $0)) } ?? L10n.string("Installed")
         }
     }
 
@@ -140,12 +140,11 @@ enum AltTabSetup {
         var errorDescription: String? {
             switch self {
             case .notInstalled:
-                return "AltTab isn't installed. Click “Get AltTab” to install it first."
+                return L10n.string("AltTab isn't installed. Click “Get AltTab” to install it first.")
             case .writeFailed:
-                return "Couldn't write AltTab's preferences."
+                return L10n.string("Couldn't write AltTab's preferences.")
             case .relaunchFailed:
-                return "Updated AltTab's settings, but couldn't relaunch it automatically. "
-                    + "Open AltTab yourself to apply them."
+                return L10n.string("Updated AltTab's settings, but couldn't relaunch it automatically. Open AltTab yourself to apply them.")
             }
         }
     }

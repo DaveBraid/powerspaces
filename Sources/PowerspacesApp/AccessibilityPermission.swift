@@ -47,7 +47,7 @@ enum AccessibilityPermission {
     /// sudo: it only touches the current user's permissions.
     @discardableResult
     static func reset() -> Bool {
-        run("/usr/bin/tccutil", ["reset", "Accessibility", bundleID])
+        run("/usr/bin/tccutil", ["reset", "Accessibility", bundleID]) // 系统服务标识不能翻译。
     }
 
     /// Open System Settings straight to Privacy & Security ▸ Accessibility, where the
@@ -86,17 +86,14 @@ enum AccessibilityPermission {
     @MainActor static func confirmResetAndRelaunch() {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Reset Accessibility permission?"
-        alert.informativeText = """
-            This clears Powerspaces' Accessibility approval from macOS, then relaunches the \
-            app so you can grant it fresh. Use it when you've enabled Accessibility but window \
-            actions still say it's missing, usually after rebuilding or reinstalling.
-
-            After the relaunch, switch Powerspaces back on in System Settings ▸ Privacy & \
-            Security ▸ Accessibility.
-            """
-        alert.addButton(withTitle: "Reset & Relaunch")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L10n.string("Reset Accessibility permission?")
+        alert.informativeText = L10n.string(
+            "This clears Powerspaces' Accessibility approval from macOS, then relaunches the app so "
+            + "you can grant it fresh. Use it when you've enabled Accessibility but window actions "
+            + "still say it's missing, usually after rebuilding or reinstalling.\n\nAfter the relaunch, "
+            + "switch Powerspaces back on in System Settings ▸ Privacy & Security ▸ Accessibility.")
+        alert.addButton(withTitle: L10n.string("Reset & Relaunch"))
+        alert.addButton(withTitle: L10n.string("Cancel"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         performResetAndRelaunch()
     }
@@ -110,9 +107,8 @@ enum AccessibilityPermission {
         guard reset() else {
             let fail = NSAlert()
             fail.alertStyle = .critical
-            fail.messageText = "Couldn't reset the permission"
-            fail.informativeText = "Running tccutil failed. Reset it manually in Terminal:\n\n"
-                + "tccutil reset Accessibility \(bundleID)"
+            fail.messageText = L10n.string("Couldn't reset the permission")
+            fail.informativeText = L10n.format("Running tccutil failed. Reset it manually in Terminal:\n\ntccutil reset Accessibility %@", String(describing: bundleID))
             fail.runModal()
             return
         }

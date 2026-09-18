@@ -10,6 +10,7 @@ extension Notification.Name {
     /// Posted whenever any UI preference changes, so the live dock / HUD / timer
     /// can re-apply. Strategy (config.json) changes use their own path.
     static let preferencesDidChange = Notification.Name("powerspaces.preferencesDidChange")
+    static let appLanguageDidChange = Notification.Name("powerspaces.appLanguageDidChange")
 }
 
 // MARK: - Preferences store
@@ -36,14 +37,18 @@ final class Preferences: ObservableObject {
 
     /// Where UI preferences live on disk — a fixed path (like the strategy
     /// `config.json`) so they don't depend on the app's bundle identity.
-    static var preferencesURL: URL { PowerspacesPaths.preferencesFile }
+    static var preferencesURL: URL {
+        DevelopmentTools.isPreview
+            ? DevelopmentTools.previewDirectory.appendingPathComponent("preferences.json")
+            : PowerspacesPaths.preferencesFile
+    }
 
-    private let store = JSONPreferencesStore(url: Preferences.preferencesURL)
+    private let store: JSONPreferencesStore
 
     /// Per-desktop dock color/opacity overrides live in their own file
     /// (`dock-colors.json`), keyed by Space UUID — not the flat preferences store,
     /// which only holds scalar settings. See `DockTintStore`.
-    private let dockTints = DockTintStore(url: PowerspacesPaths.dockColorsFile)
+    private let dockTints: DockTintStore
 
     // MARK: Numeric specs (presets + slider bounds), shared with the UI
 
@@ -121,6 +126,7 @@ final class Preferences: ObservableObject {
         range: 0...1, step: 0.01, format: { String(format: "%.2fs", $0) })
 
     private enum K {
+        static let language = "language" // 仅保存 en / zh-Hans，不依赖翻译后的显示名称。
         static let hoverEnabled = "hoverEnabled"
         // These numeric settings used to be stored as enum *strings* (e.g.
         // "medium"). They're now Doubles, so they use fresh "…Number" keys —
@@ -211,7 +217,10 @@ final class Preferences: ObservableObject {
         static func custom(_ key: String) -> String { key + "Custom" }
     }
 
-    private init() {
+    /// 从指定路径加载偏好；测试和界面预览使用临时目录，不接触真实配置。
+    init(url: URL = Preferences.preferencesURL) {
+        store = JSONPreferencesStore(url: url)
+        dockTints = DockTintStore(url: url.deletingLastPathComponent().appendingPathComponent("dock-colors.json"))
         store.register(defaults: [
             // Defaults below mirror the project's chosen default preferences,
             // with one deliberate
@@ -281,6 +290,19 @@ final class Preferences: ObservableObject {
             K.detailLevel: DetailLevel.advanced.rawValue,
             K.hasSeenWelcome: false,
         ])
+        L10n.language = language
+    }
+
+    /// 读取或保存应用语言；缺省跟随系统，切换仅刷新文案，不触发系统设置操作。
+    var language: AppLanguage {
+        get { raw(K.language, AppLanguage.systemDefault) }
+        set {
+            guard newValue != language else { return }
+            objectWillChange.send()
+            store.set(newValue.rawValue, K.language)
+            L10n.language = newValue
+            NotificationCenter.default.post(name: .appLanguageDidChange, object: nil)
+        }
     }
 
     // MARK: Generic accessors
@@ -642,6 +664,8 @@ final class Preferences: ObservableObject {
     func resetAllToDefaults() {
         objectWillChange.send()
         store.removeAll()
+        L10n.language = language
+        NotificationCenter.default.post(name: .appLanguageDidChange, object: nil)
         dockTints.clearAll()
         changed()
     }

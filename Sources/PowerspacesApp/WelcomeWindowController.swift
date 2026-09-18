@@ -39,11 +39,12 @@ final class WelcomeWindowController: ActivatingWindowController {
 /// permissions are (and that Screen Recording is not one of them), a live
 /// Accessibility status row, and the grant/continue buttons.
 private struct WelcomeView: View {
+    @ObservedObject private var languagePreferences = Preferences.shared
     let onGrant: () -> Void
     let onOpenSettings: () -> Void
     let onClose: () -> Void
 
-    @State private var trusted = AccessibilityPermission.isTrusted
+    @ViewState private var trusted = AccessibilityPermission.isTrusted
     // Poll trust once a second so the status flips to granted without a relaunch.
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -52,23 +53,24 @@ private struct WelcomeView: View {
             Image(nsImage: AppIcon.image(side: 96))
                 .resizable()
                 .frame(width: 96, height: 96)
-            Text("Welcome to Powerspaces")
+            Text(L10n.string("Welcome to Powerspaces"))
                 .font(.title2).bold()
-            Text("Powerspaces makes your macOS desktops work like Windows virtual desktops. "
-                 + "Each desktop gets its own dock, and opening an app brings it to the desktop "
-                 + "you are on instead of jumping you away.")
+            Text(L10n.string(
+                "Powerspaces makes your macOS desktops work like Windows virtual desktops. Each "
+                + "desktop gets its own dock, and opening an app brings it to the desktop you are on "
+                + "instead of jumping you away."))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 10) {
-                Label("Each desktop gets its own dock, showing only the apps on it.",
+                Label(L10n.string("Each desktop gets its own dock, showing only the apps on it."),
                       systemImage: "dock.rectangle")
                     .fixedSize(horizontal: false, vertical: true)
-                Label("Opening an app brings it to the desktop you're on, instead of jumping away.",
+                Label(L10n.string("Opening an app brings it to the desktop you're on, instead of jumping away."),
                       systemImage: "arrow.up.forward.app")
                     .fixedSize(horizontal: false, vertical: true)
-                Label("A searchable App Launcher opens any app, one shortcut away.",
+                Label(L10n.string("A searchable App Launcher opens any app, one shortcut away."),
                       systemImage: "square.grid.2x2")
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -78,11 +80,9 @@ private struct WelcomeView: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 10) {
-                Label("Powerspaces needs Accessibility to focus, close, and read the titles of "
-                      + "windows.", systemImage: "lock.shield")
+                Label(L10n.string("Powerspaces needs Accessibility to focus, close, and read the titles of windows."), systemImage: "lock.shield")
                     .fixedSize(horizontal: false, vertical: true)
-                Label("It does not need Screen Recording. The dock uses app icons, never "
-                      + "screenshots.", systemImage: "checkmark.seal")
+                Label(L10n.string("It does not need Screen Recording. The dock uses app icons, never screenshots."), systemImage: "checkmark.seal")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -92,15 +92,15 @@ private struct WelcomeView: View {
             HStack(spacing: 6) {
                 Image(systemName: trusted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                     .foregroundStyle(trusted ? Color.green : Color.orange)
-                Text(trusted ? "Accessibility is on." : "Accessibility is off.")
+                Text(trusted ? L10n.string("Accessibility is on.") : L10n.string("Accessibility is off."))
                     .foregroundStyle(.secondary)
             }
             .font(.callout)
 
             HStack {
-                Button("Open System Settings") { onOpenSettings() }
+                Button(L10n.string("Open System Settings")) { onOpenSettings() }
                 Spacer()
-                Button(trusted ? "Done" : "Grant Accessibility") {
+                Button(trusted ? L10n.string("Done") : L10n.string("Grant Accessibility")) {
                     if trusted { onClose() } else { onGrant() }
                 }
                 .keyboardShortcut(.defaultAction)

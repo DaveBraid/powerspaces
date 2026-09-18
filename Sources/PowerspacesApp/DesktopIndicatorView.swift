@@ -35,11 +35,11 @@ final class DesktopIndicatorView: NSView {
     /// "Desktop N". A nil/0 number degrades to a neutral label rather than nothing.
     func setNumber(_ number: Int?, compact: Bool) {
         if let number, number > 0 {
-            label.stringValue = compact ? "\(number)" : "Desktop \(number)"
-            toolTip = "Current desktop: \(number)"
+            label.stringValue = compact ? "\(number)" : L10n.format("Desktop %@", String(describing: number))
+            toolTip = L10n.format("Current desktop: %@", String(describing: number))
         } else {
-            label.stringValue = compact ? "•" : "Desktop"
-            toolTip = "Current desktop"
+            label.stringValue = compact ? "•" : L10n.string("Desktop")
+            toolTip = L10n.string("Current desktop")
         }
         invalidateIntrinsicContentSize()
     }

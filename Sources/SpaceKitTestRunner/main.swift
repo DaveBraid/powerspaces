@@ -1376,6 +1376,32 @@ h.test("single display: a window on it never moves") {
 
 // MARK: - Live provider smoke (skips if CGS is unavailable)
 
+// 本地化只影响提示，不改变跨桌面策略；英文默认值保持 CLI 兼容。
+h.test("warning localization preserves the default CLI message and configured behavior") {
+    let target = AppTarget(bundleID: "test.single-window", name: "Demo")
+    let snapshot = SpaceSnapshot(activeSpaceID: 1,
+                                 windows: [win(90, bundle: "test.single-window", spaces: [2])])
+    let config = StrategyConfig(byBundleID: [:], defaultKind: .warn)
+    var englishMessage = ""
+    let english = Launcher(provider: FakeProvider(snap: snapshot), config: config,
+                           warn: { englishMessage = $0 })
+    guard case .warned = try english.launch(target: target, forceNew: false) else {
+        h.ok(false, "warning strategy must remain a warning"); return
+    }
+    h.eq(englishMessage, "Demo is already open on another desktop — switch desktops to use it.")
+    var chineseMessage = ""
+    var lookupKey = ""
+    let chinese = Launcher(provider: FakeProvider(snap: snapshot), config: config,
+                           localize: { key in lookupKey = key; return "%@ 已在其他桌面打开。" },
+                           warn: { chineseMessage = $0 })
+    guard case let .warned(outcome) = try chinese.launch(target: target, forceNew: false) else {
+        h.ok(false, "translation must not change the launch outcome"); return
+    }
+    h.eq(lookupKey, "%@ is already open on another desktop — switch desktops to use it.")
+    h.eq(chineseMessage, "Demo 已在其他桌面打开。")
+    h.eq(outcome, chineseMessage)
+}
+
 print("Live provider (integration)")
 h.test("current Space is readable, or skipped") {
     do {

@@ -34,13 +34,17 @@ public struct Launcher {
     let provider: SpaceProviding
     let config: StrategyConfig
     let warn: (String) -> Void
+    let localize: (String) -> String
 
+    /// 注入文案查找函数供图形界面汉化；缺省返回原文，保留 CLI 的英文输出。
     public init(provider: SpaceProviding,
                 config: StrategyConfig,
+                localize: @escaping (String) -> String = { $0 },
                 warn: @escaping (String) -> Void) {
         self.provider = provider
         self.config = config
         self.warn = warn
+        self.localize = localize
     }
 
     @discardableResult
@@ -265,10 +269,16 @@ public struct Launcher {
         return Set(instances.map(\.processIdentifier)).subtracting(pidsWithWindows)
     }
 
+    /// 用完整模板生成警告；输入目标应用和原有说明，返回实际展示的结果。
     func warned(_ target: AppTarget, _ tail: String) -> LaunchOutcome {
-        let message = "\(displayName(for: target)) \(tail)"
+        let message = localizedMessage("%@ " + tail, displayName(for: target))
         warn(message)
         return .warned(message)
+    }
+
+    /// 翻译后再插入参数，避免应用名和错误详情成为翻译键的一部分。
+    func localizedMessage(_ key: String, _ values: String...) -> String {
+        String(format: localize(key), arguments: values)
     }
 
     func displayName(for target: AppTarget) -> String {

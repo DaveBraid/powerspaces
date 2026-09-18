@@ -167,8 +167,9 @@ enum RaycastSetup {
     enum SetupError: LocalizedError {
         case notBundled
         var errorDescription: String? {
-            "The extension and CLI aren't bundled in this build. Rebuild the app with "
-                + "scripts/make-app.sh (which bundles them), then try Set Up again."
+            L10n.string(
+                "The extension and CLI aren't bundled in this build. Rebuild the app with "
+                + "scripts/make-app.sh (which bundles them), then try Set Up again.")
         }
     }
 

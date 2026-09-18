@@ -44,6 +44,7 @@ final class AccessibilityRepairWindowController: ActivatingWindowController {
 /// buttons. No live status row — Reset & Relaunch quits the app, so there's nothing to
 /// keep watching here.
 private struct AccessibilityRepairView: View {
+    @ObservedObject private var languagePreferences = Preferences.shared
     let onReset: () -> Void
     let onOpenSettings: () -> Void
     let onClose: () -> Void
@@ -53,28 +54,30 @@ private struct AccessibilityRepairView: View {
             Image(nsImage: AppIcon.image(side: 96))
                 .resizable()
                 .frame(width: 96, height: 96)
-            Text("Accessibility needs re-granting")
+            Text(L10n.string("Accessibility needs re-granting"))
                 .font(.title2).bold()
-            Text("Powerspaces shows as allowed for Accessibility, but macOS isn't actually "
-                 + "granting it. This usually happens after you reinstall or update the app — "
-                 + "the old approval no longer matches the new copy. Reset it and Powerspaces "
-                 + "reopens so you can switch it back on cleanly.")
+            Text(L10n.string(
+                "Powerspaces shows as allowed for Accessibility, but macOS isn't actually granting "
+                + "it. This usually happens after you reinstall or update the app — the old approval no"
+                + " longer matches the new copy. Reset it and Powerspaces reopens so you can switch it "
+                + "back on cleanly."))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Label("We turned the faster desktop switch off for now. Turn it back on in "
-                  + "Preferences once Accessibility is working.", systemImage: "info.circle")
+            Label(L10n.string(
+                "We turned the faster desktop switch off for now. Turn it back on in Preferences once"
+                + " Accessibility is working."), systemImage: "info.circle")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack {
-                Button("Open System Settings") { onOpenSettings() }
+                Button(L10n.string("Open System Settings")) { onOpenSettings() }
                 Spacer()
-                Button("Not now") { onClose() }
-                Button("Reset & Relaunch") { onReset() }
+                Button(L10n.string("Not now")) { onClose() }
+                Button(L10n.string("Reset & Relaunch")) { onReset() }
                     .keyboardShortcut(.defaultAction)
             }
         }

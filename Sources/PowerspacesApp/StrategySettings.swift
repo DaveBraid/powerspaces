@@ -11,13 +11,13 @@ import SpaceKit
 extension StrategyKind {
     var label: String {
         switch self {
-        case .newInstance: return "New instance (open -n)"
-        case .openArgs: return "Run with args (--new-window)"
-        case .appleScript: return "AppleScript (new document)"
-        case .warn: return "Show a warning"
-        case .quitReopen: return "Quit there and reopen here"
-        case .cmdN: return "Synthesize ⌘N"
-        case .focusOnly: return "Focus (accept the jump)"
+        case .newInstance: return L10n.string("New instance (open -n)")
+        case .openArgs: return L10n.string("Run with args (--new-window)")
+        case .appleScript: return L10n.string("AppleScript (new document)")
+        case .warn: return L10n.string("Show a warning")
+        case .quitReopen: return L10n.string("Quit there and reopen here")
+        case .cmdN: return L10n.string("Synthesize ⌘N")
+        case .focusOnly: return L10n.string("Focus (accept the jump)")
         }
     }
 }
@@ -112,7 +112,12 @@ final class StrategyStore {
 final class StrategySettingsController: ObservableObject {
     // No @Published members (state lives in StrategyStore); drive updates by hand.
     let objectWillChange = ObservableObjectPublisher()
-    private let store = StrategyStore()
+    private let store: StrategyStore
+
+    /// 从指定配置文件加载策略；预览传入临时路径，默认仍使用正式配置。
+    init(url: URL = StrategyConfig.defaultConfigURL) {
+        store = StrategyStore(url: url)
+    }
     /// Set by AppDelegate: reload config.json into the running launcher + refresh.
     var onChanged: (() -> Void)?
 
@@ -143,14 +148,13 @@ final class StrategySettingsController: ObservableObject {
     @MainActor private func confirmQuitReopen(name: String) -> Bool {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Quit \(name) there and reopen it here?"
-        alert.informativeText = """
-            When \(name) is open on another desktop, this quits it entirely and \
-            relaunches it on the current one, the only reliable way to bring a \
-            single-window app here. Any unsaved or transient state in \(name) is lost.
-            """
-        alert.addButton(withTitle: "Quit and reopen here anyway")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L10n.format("Quit %@ there and reopen it here?", String(describing: name))
+        alert.informativeText = L10n.format(
+            "When %@ is open on another desktop, this quits it entirely and relaunches it on the "
+            + "current one, the only reliable way to bring a single-window app here. Any unsaved or "
+            + "transient state in %@ is lost.", String(describing: name), String(describing: name))
+        alert.addButton(withTitle: L10n.string("Quit and reopen here anyway"))
+        alert.addButton(withTitle: L10n.string("Cancel"))
         NSApp.activate(ignoringOtherApps: true)
         return alert.runModal() == .alertFirstButtonReturn
     }

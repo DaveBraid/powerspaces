@@ -30,11 +30,12 @@ reclaim_build_dir "$ROOT/.build"
 
 echo "› Building release binary…"
 swift build -c release --product "$EXEC_NAME"
-BIN="$ROOT/.build/release/$EXEC_NAME"
+BIN_DIR="$(swift build -c release --show-bin-path)" # 兼容新旧 SwiftPM 的产物目录。
+BIN="$BIN_DIR/$EXEC_NAME"
 
 echo "› Building powerspaces CLI (bundled for the Raycast setup)…"
 swift build -c release --product powerspaces
-CLI_BIN="$ROOT/.build/release/powerspaces"
+CLI_BIN="$BIN_DIR/powerspaces"
 
 echo "› Rendering AppIcon.icns…"
 WORK="$(mktemp -d)"
@@ -45,6 +46,12 @@ echo "› Assembling $APP_NAME.app…"
 reclaim "$APP"   # rm; falls back to one sudo if a prior build left it root-owned
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$APP_NAME"
+# 本地化资源必须随应用分发；缺少资源时立即失败，避免仅在开发机上正常显示。
+cp -R "$BIN_DIR/powerspaces_PowerspacesApp.bundle" "$APP/Contents/Resources/"
+for language in en zh-Hans; do
+    mkdir -p "$APP/Contents/Resources/$language.lproj"
+    cp "$ROOT/packaging/$language.lproj/InfoPlist.strings" "$APP/Contents/Resources/$language.lproj/"
+done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 rm -rf "$WORK"
 
@@ -78,6 +85,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleIdentifier</key>         <string>nl.sebastianpdw.powerspaces</string>
     <key>CFBundleIconFile</key>           <string>AppIcon</string>
     <key>CFBundlePackageType</key>        <string>APPL</string>
+    <key>CFBundleDevelopmentRegion</key>  <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array><string>en</string><string>zh-Hans</string></array>
     <key>CFBundleShortVersionString</key> <string>$VERSION</string>
     <key>CFBundleVersion</key>            <string>1</string>
     <key>LSMinimumSystemVersion</key>     <string>14.0</string>
