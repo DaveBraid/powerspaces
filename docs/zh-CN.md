@@ -132,3 +132,8 @@ open /Applications/Powerspaces.app
 通知徽章诊断：通过已授权的 PS 应用启动参数 --check-system-badges 记录 AXURL／AXStatusLabel 和通知注册返回值；--observe-system-badges 限时观察 30 秒，记录实际通知回调及徽章采样，日志位于 /tmp/ps-dock-badge-study/diagnostic.log。注册成功不能替代徽章变化回调验证。外观预览追加 --badges 可显示固定通知文字与独立窗口数，不读取真实通知。
 
 设置 → 系统 → 辅助功能直接说明权限用途：读取窗口标题、聚焦／移动／最小化／关闭窗口，以及读取系统 Dock 通知徽章并显示于 PS；“启用／管理权限…”在基础模式可见，点击显示授权引导，再打开系统辅助功能设置；返回 PS 后实时更新授权状态并触发徽章重读，权限开关仍由用户操作。
+
+
+本机构建使用固定的本地代码签名身份（位于 `~/Library/Application Support/Powerspaces/Signing/` 的独立钥匙串与配置），由 `scripts/sign-app.py` 自动读取；该目录须私密保存，勿删除、提交或分享。已有配置缺损时构建失败，不降级为临时签名。可用 `CODESIGN_IDENTITY` 指定其他证书，但切换身份会需要重新授权；无本机配置的其他构建机仍保留上游临时签名行为。本地证书仅用于持续开发，不等于 Developer ID 或公证发布，也不添加系统信任。
+
+从旧临时签名迁移到固定证书需要最后一次重新授权；后续须保留同一证书、bundle ID 和安装路径。已验证不同包内容签名后的身份要求相同；辅助功能授权跨更新保留须在用户首次授权新身份后实机复核。

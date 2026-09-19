@@ -5,21 +5,9 @@
 import AppKit
 import ApplicationServices
 
-/// Manages the app's Accessibility (AX) permission — the one Powerspaces needs to
-/// close or minimize windows and read window titles. The common failure mode for a
-/// frequently-rebuilt, *unsigned* app (which this is — see `make-app.sh`) is a
-/// **stale TCC grant**: macOS keys the Accessibility approval to the app's code
-/// identity, so every rebuild produces a binary the old grant no longer matches.
-/// System Settings still shows the toggle on, yet `AXIsProcessTrusted()` returns
-/// false — so "Quit (this desktop)" and friends warn "needs Accessibility" even
-/// though the user already enabled it.
-///
-/// The cure is `tccutil reset Accessibility <bundle id>`, which clears every grant
-/// for the bundle so the app can be re-added fresh. We then relaunch, because a cold
-/// start re-prompts and re-evaluates trust cleanly. We drive the command-line
-/// `tccutil` (the same thing a user would type by hand) rather than a private API,
-/// so the behaviour is transparent and trivially reproducible from a terminal. The
-/// app isn't sandboxed (it already uses private CGS APIs), so spawning it is allowed.
+/// 管理 AX 授权与历史失效条目的修复。临时签名的身份包含构建哈希，更新可能使旧授权失效。
+/// 本机打包现使用固定证书和 bundle ID；首次迁移仍需用户授权，之后保持相同签名身份。
+/// 重置仅由用户确认触发，不能作为更新后的自动操作。
 enum AccessibilityPermission {
     /// The app's bundle identifier, used to scope the TCC reset. Falls back to the
     /// known id when running unbundled (`swift run`), where `Bundle.main` has none.

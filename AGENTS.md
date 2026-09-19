@@ -125,7 +125,7 @@ swift run --build-system native PowerspacesApp --preview-appearance # 设置与�
 - 测试末尾的 CGS 集成冒烟项允许在系统接口不可用时跳过；跳过不代表真实桌面交互已经通过验证。
 - 纯文档修改检查内容、路径和 diff 即可；简单文案 / 外观改动不添加机械测试，但应进行对应的构建或视觉检查。
 - 改动 Raycast 扩展时，使用其锁文件安装依赖，并在该目录运行 `npm run lint`、`npm run build`。
-- 打包脚本会重建仓库内 `.app`、附带 CLI 和 Raycast 源码并进行临时签名；本地构建不等于 Developer ID 签名或公证发布。
+- 打包脚本会重建仓库内 `.app`、附带 CLI 和 Raycast 源码并签名；本机使用仓库外的固定代码签名证书，由 scripts/sign-app.py 读取，配置存在而不可用时禁止回退临时签名。本地构建不等于 Developer ID 签名或公证发布。
 - 安装脚本会替换目标目录中的应用，可能调用 sudo；不要把安装、启动应用、修改系统 Dock 或运行卸载流程作为普通编译检查。用户已授权相关操作时按范围执行。
 - 不通过 sudo 运行整套构建，不提交 `.build/`、`.app`、`node_modules/` 等生成物。
 - macOS 27 的当前 Command Line Tools 缺少 `SwiftUIMacros` 插件；`ViewState` 显式引用原有 `SwiftUI.State<Value>` 属性包装器，避免选择同名宏。维护时不要无依据地改回 `@State`。

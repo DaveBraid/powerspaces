@@ -116,18 +116,9 @@ echo "› Stripping debug symbols (removes embedded build paths)…"
 strip -S "$APP/Contents/MacOS/$APP_NAME"
 strip -S "$APP/Contents/Resources/powerspaces"
 
-# Ad-hoc code-sign the finished bundle, inside-out: the nested CLI first, then the
-# app itself (which seals Contents/Resources). swift's linker only ad-hoc-signs the
-# inner executable; the resources copied in above leave that signature inconsistent,
-# so macOS reports "code has no resources but signature indicates they must be
-# present" and shows the app as "damaged" — especially after a quarantine round-trip
-# (a Homebrew cask download). Ad-hoc ("-") signing is not a Developer ID and is not
-# notarized, but it produces a valid, launchable bundle (a downloaded copy still
-# needs Gatekeeper cleared once). Developer-ID signing + notarization is the upgrade.
-echo "› Ad-hoc code-signing the bundle…"
-codesign --force --sign - "$APP/Contents/Resources/powerspaces"
-codesign --force --deep --sign - "$APP"
-codesign --verify --deep --strict "$APP" && echo "  ✓ code signature valid"
+# 本机配置优先使用固定证书；缺少密钥即失败，避免更新后反复丢失 AX 授权。
+# 其他机器可通过 CODESIGN_IDENTITY 使用自己的开发证书；未配置时保留上游行为。
+python3 "$ROOT/scripts/sign-app.py" "$APP"
 
 touch "$APP"   # nudge LaunchServices to notice the new bundle/icon
 
