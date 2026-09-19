@@ -514,6 +514,9 @@ extension WindowLayoutInterceptor {
         activeTargets[identity] = isRestore
         stateLock.unlock()
 
+        if let reservation = screen.reservation {
+            log("RESERVE display=\(screen.displayID) edge=\(reservation.edge.rawValue) thickness=\(reservation.thickness) allowed=\(screen.allowedFrame)")
+        }
         let duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0.0 : 0.30
         let framesPerSecond = Double(screen.frame.isEmpty ? 60 : 60)
         log("INTERCEPT source=\(source.rawValue) command=\(command.rawValue) identity=\(identity.logDescription) generation=\(token) screen=\(screen.frame) original=\(original) target=\(target) restore=\(isRestore)")
