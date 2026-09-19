@@ -67,6 +67,20 @@ public final class CGSSpaceProvider: SpaceProviding {
                              runningBundleIDs: running)
     }
 
+    /// 返回所有桌面的稳定标识，包括隐藏桌面；移窗后无需先切过去才能迁移归属。
+    public func spaceUUIDs() -> [SpaceID: String] {
+        var result: [SpaceID: String] = [:]
+        for display in managedDisplaySpaces() ?? [] {
+            for space in display["Spaces"] as? [[String: Any]] ?? [] {
+                guard let id = (space["ManagedSpaceID"] as? NSNumber)?.uint64Value
+                        ?? (space["id64"] as? NSNumber)?.uint64Value,
+                      let uuid = space["uuid"] as? String, !uuid.isEmpty else { continue }
+                result[id] = uuid
+            }
+        }
+        return result
+    }
+
     /// Every attached display with the Space currently visible on it — the basis
     /// for the per-display dock. Geometry (`bounds`) comes from the display layout;
     /// the visible Space's id/uuid and the "owns the menu bar" flag come from the

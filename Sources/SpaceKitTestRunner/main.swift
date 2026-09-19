@@ -66,13 +66,82 @@ h.test("windowless ownership survives switches and clears exited processes") {
     owner.update(livePIDs: [10], pidsWithWindows: [10],
                  visibleScopes: [10: ["screen/B", "other/C"]], fallbackScope: "screen/B")
     h.ok(!owner.contains(20, scope: "screen/A"))
-    h.ok(!owner.contains(10, scope: "screen/A"))
+    h.ok(owner.contains(10, scope: "screen/A"), "new visible scopes retain earlier desktop ownership")
     h.ok(owner.contains(10, scope: "other/C"))
     owner.update(livePIDs: [10, 30], pidsWithWindows: [30],
                  visibleScopes: [:], fallbackScope: "screen/B")
     h.ok(!owner.contains(30, scope: "screen/B"), "another desktop's windows do not become windowless")
 }
 
+
+h.test("desktop ownership persists only for the same live process") {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("ownership.json")
+    var owner = WindowlessOwnership(url: url)
+    owner.update(livePIDs: [10], pidsWithWindows: [10], visibleScopes: [10: ["display/A"]],
+                 fallbackScope: "display/A", processIdentities: [10: "app/start1"])
+    owner.update(livePIDs: [10], pidsWithWindows: [10], visibleScopes: [10: ["display/B"]],
+                 fallbackScope: "display/B", processIdentities: [10: "app/start1"])
+    h.ok(owner.contains(10, scope: "display/A"), "other desktop window does not discard A")
+    var restored = WindowlessOwnership(url: url)
+    restored.update(livePIDs: [10], pidsWithWindows: [], visibleScopes: [:],
+                    fallbackScope: "display/C", processIdentities: [10: "app/start1"])
+    h.ok(restored.contains(10, scope: "display/A"))
+    h.ok(restored.contains(10, scope: "display/B"))
+    h.ok(!restored.contains(10, scope: "display/C"), "PS restart must not reassign windowless process")
+    restored.update(livePIDs: [10], pidsWithWindows: [], visibleScopes: [:],
+                    fallbackScope: "display/C", processIdentities: [10: "app/start2"])
+    h.ok(!restored.contains(10, scope: "display/A"), "reused PID must not inherit ownership")
+    h.ok(restored.contains(10, scope: "display/C"))
+    restored.update(livePIDs: [], pidsWithWindows: [], visibleScopes: [:], fallbackScope: "display/C")
+    h.ok(!WindowlessOwnership(url: url).contains(10, scope: "display/C"), "exit cleanup persists")
+}
+
+h.test("owned running apps merge per desktop without duplicate processes") {
+    let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: [])
+    let entries = [DockApp(bundleID: "app", name: "App", pid: 10, windowCount: 0),
+                   DockApp(bundleID: "app", name: "App", pid: 11, windowCount: 0)]
+    let result = DockModel.apps(onCurrentSpace: snapshot, pinnedHere: [], pinnedEverywhere: [],
+                               windowlessApps: entries, nameForBundleID: { _ in nil })
+    h.eq(result.count, 1)
+    h.ok(result.first?.isRunning == true && result.first?.isPinned == false)
+}
+
+h.test("moving windows replaces ownership while closing retains it") {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("ownership.json")
+    var owner = WindowlessOwnership(url: url)
+    func update(_ windows: [UInt32: Set<String>], live: Set<UInt32>) {
+        owner.update(livePIDs: [10], pidsWithWindows: live.isEmpty ? [] : [10],
+                     visibleScopes: [:], fallbackScope: "C", processIdentities: [10: "start"],
+                     observedWindows: [10: windows], liveWindowIDs: live)
+    }
+    update([:], live: []) // 先捕获无窗口的启动阶段，暂归入 C。
+    h.ok(owner.contains(10, scope: "C"))
+    update([100: ["A"]], live: [100])
+    h.ok(!owner.contains(10, scope: "C"), "first real window replaces inferred launch scope")
+    update([:], live: [100]) // 切到其他 Space，看不到旧窗口，归属仍留在 A。
+    h.ok(owner.contains(10, scope: "A"))
+    h.ok(!owner.contains(10, scope: "C"))
+    update([100: ["B"]], live: [100])
+    h.ok(!owner.contains(10, scope: "A"), "moving A to B removes A")
+    h.ok(owner.contains(10, scope: "B"))
+    update([:], live: [])
+    h.ok(owner.contains(10, scope: "B"), "closing retains B")
+    owner = WindowlessOwnership(url: url)
+    update([:], live: [])
+    h.ok(owner.contains(10, scope: "B"), "closed window ownership survives PS restart")
+    update([100: ["A"], 101: ["A"]], live: [100, 101])
+    update([100: ["B"], 101: ["A"]], live: [100, 101])
+    h.ok(owner.contains(10, scope: "A"), "other window keeps A")
+    update([:], live: []) // 暂时没有窗口快照也不能把移动前的位置永久固化。
+    update([100: ["B"], 101: ["B"]], live: [100, 101])
+    h.ok(!owner.contains(10, scope: "A"), "reappearing moved window replaces old scope")
+    update([100: ["B", "D"]], live: [100])
+    h.ok(owner.contains(10, scope: "D"), "explicit multi-space windows retain all memberships")
+}
 
 // MARK: - Helpers
 

@@ -19,6 +19,8 @@ public enum PowerspacesPaths {
     public static var configFile: URL { configDir.appendingPathComponent("config.json") }
     /// Pinned-apps + saved dock arrangement (`pins.json`).
     public static var pinsFile: URL { configDir.appendingPathComponent("pins.json") }
+    /// 存活进程的桌面归属缓存；退出进程的记录随刷新清理。
+    public static var appOwnershipFile: URL { configDir.appendingPathComponent("app-desktop-ownership.json") }
     /// UI preferences (`preferences.json`).
     public static var preferencesFile: URL { configDir.appendingPathComponent("preferences.json") }
     /// Per-desktop dock color/opacity overrides (`dock-colors.json`), keyed by

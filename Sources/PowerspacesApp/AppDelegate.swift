@@ -768,7 +768,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// flipped preference takes effect), then fills each from its display's visible
     /// Space. Returns whether any dock's display list changed, so the poll can
     /// decide whether to back off.
-    private var windowlessOwnership = WindowlessOwnership()
+    private var windowlessOwnership = WindowlessOwnership(url: PowerspacesPaths.appOwnershipFile)
+    private let ownershipSession = UUID().uuidString // 无启动时间的进程不跨 PS 重启恢复。
 
     @discardableResult
     private func refresh() -> Bool {
@@ -792,22 +793,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             app.bundleIdentifier.map { ($0, app.processIdentifier) }
         }, uniquingKeysWith: { first, _ in first })
         let fallbackScope = displays.first(where: { $0.isActive }).map {
-            "\($0.displayUUID)/\($0.currentSpaceID)"
+            ownershipScope($0.displayUUID, $0.currentSpaceUUID)
         } ?? ""
         var scopesByPID: [pid_t: Set<String>] = [:]
-        for info in displays {
-            let scope = "\(info.displayUUID)/\(info.currentSpaceID)"
-            for app in DockModel.apps(onDisplay: info.bounds, snapshot: snapshot,
-                                      visibleSpace: info.currentSpaceID) {
-                if let pid = app.pid { scopesByPID[pid, default: []].insert(scope) }
+        var observedWindows: [pid_t: [UInt32: Set<String>]] = [:]
+        let spaceUUIDs = provider.spaceUUIDs()
+        for window in snapshot.windows {
+            guard let display = displays.first(where: { window.isOnDisplay($0.bounds) }) else { continue }
+            var scopes = Set(window.spaceIDs.compactMap { spaceUUIDs[$0] }.map {
+                ownershipScope(display.displayUUID, $0)
+            }.filter { !$0.isEmpty })
+            if window.spaceIDs.isEmpty, window.isOnscreen {
+                let scope = ownershipScope(display.displayUUID, display.currentSpaceUUID)
+                if !scope.isEmpty { scopes.insert(scope) }
+            }
+            // 未知 Space 的隐藏／最小化窗口不能为新桌面提供归属证据。
+            if !scopes.isEmpty {
+                scopesByPID[window.pid, default: []].formUnion(scopes)
+                observedWindows[window.pid, default: [:]][window.windowID] = scopes
             }
         }
         windowlessOwnership.update(livePIDs: Set(regularApps.map(\.processIdentifier)),
                                    pidsWithWindows: pidsWithWindows,
-                                   visibleScopes: scopesByPID, fallbackScope: fallbackScope)
-        let windowlessApps = Self.windowlessApps(pidsWithWindows: pidsWithWindows)
+                                   visibleScopes: scopesByPID, fallbackScope: fallbackScope,
+                                   processIdentities: Dictionary(uniqueKeysWithValues: regularApps.map { app in
+                                       let start = app.launchDate.map { String($0.timeIntervalSince1970) } ?? ownershipSession
+                                       return (app.processIdentifier, "\(app.bundleIdentifier ?? "")/\(app.processIdentifier)/\(start)")
+                                   }), observedWindows: observedWindows,
+                                   liveWindowIDs: Set(snapshot.windows.map(\.windowID)))
+        // 每个桌面补齐已归属的存活应用，即使它在其他桌面仍有窗口。
+        let ownedApps = regularApps.compactMap { app -> DockApp? in
+            guard let bundle = app.bundleIdentifier else { return nil }
+            return DockApp(bundleID: bundle, name: app.localizedName ?? bundle,
+                           pid: app.processIdentifier, windowCount: 0)
+        }
         // "Show hidden windows": when off, drop ⌘-hidden apps' windows before
-        // building the docks, so a hidden app disappears until it's unhidden.
+        // building window entries; its running application remains in its owned desktop.
         let displaySnapshot = prefs.showHiddenWindows ? snapshot : snapshot.droppingHiddenWindows()
         // "Windows" feature: per-window icons, and/or the wide window-title mode
         // (which is also one item per window). Both expand the app list per window.
@@ -867,9 +888,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 excludedHere: spaceUUID.map { pins.everywhereExceptions(onSpace: $0) } ?? [],
                 order: spaceUUID.map { pins.order(onSpace: $0) } ?? [],
                 includeLauncher: prefs.appLauncherEnabled,
-                windowlessApps: windowlessApps.filter {
+                windowlessApps: ownedApps.filter {
                     guard let pid = $0.pid else { return false }
-                    return windowlessOwnership.contains(pid, scope: "\(uuid)/\(info.currentSpaceID)")
+                    return windowlessOwnership.contains(pid, scope: ownershipScope(uuid, info.currentSpaceUUID))
                 },
                 options: options,
                 nameForBundleID: AppDelegate.appName(for:),
@@ -919,20 +940,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         reapPendingPids = pidsWithWindowsLastRefresh.subtracting(pidsWithWindows)
     }
 
-    /// Running apps that have **no window** this tick (`pidsWithWindows` is the set
-    /// that do) — the dock items the "show apps with no open windows" option injects.
-    /// Limited to regular, non-terminated, Dock-showing apps that aren't us (see
-    /// `isReapableRegularApp`), and keyed off the live pid so a ⌘-hidden app (which
-    /// still owns off-screen windows in the snapshot) is correctly *excluded*. Each
-    /// becomes a running, zero-window `DockApp`; a click opens a fresh window here.
-    private static func windowlessApps(pidsWithWindows: Set<pid_t>) -> [DockApp] {
-        NSWorkspace.shared.runningApplications.compactMap { app -> DockApp? in
-            let pid = app.processIdentifier
-            guard isReapableRegularApp(app), let bundleID = app.bundleIdentifier,
-                  !pidsWithWindows.contains(pid) else { return nil }
-            let name = app.localizedName ?? appName(for: bundleID) ?? bundleID
-            return DockApp(bundleID: bundleID, name: name, pid: pid, windowCount: 0)
-        }
+    /// 使用稳定桌面 UUID；系统暂未提供 UUID 时不猜测归属，等待下次有效快照。
+    private func ownershipScope(_ displayUUID: String, _ spaceUUID: String) -> String {
+        guard !displayUUID.isEmpty, !spaceUUID.isEmpty else { return "" }
+        return "\(displayUUID)/\(spaceUUID)"
     }
 
     /// A running app eligible for the window-less treatments above: a regular

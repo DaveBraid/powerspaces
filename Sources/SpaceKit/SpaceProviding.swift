@@ -16,6 +16,15 @@ import Foundation
 public protocol SpaceProviding {
     func snapshot() throws -> SpaceSnapshot
     func displays() -> [DisplaySpaceInfo]
+    func spaceUUIDs() -> [SpaceID: String]
+}
+
+public extension SpaceProviding {
+    /// 假数据提供器默认提供可见桌面；真实实现还提供隐藏桌面，以便立即识别移窗。
+    func spaceUUIDs() -> [SpaceID: String] {
+        Dictionary(displays().map { ($0.currentSpaceID, $0.currentSpaceUUID) },
+                   uniquingKeysWith: { first, _ in first })
+    }
 }
 
 public enum SpaceError: Error, CustomStringConvertible, Sendable {

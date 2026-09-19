@@ -256,8 +256,8 @@ public enum DockModel {
     /// never window-less). Pure helper for the two `apps(…)` overloads above.
     private static func merging(_ running: [DockApp], _ windowless: [DockApp]) -> [DockApp] {
         guard !windowless.isEmpty else { return running }
-        let present = Set(running.map(\.orderKey))
-        return running + windowless.filter { !present.contains($0.orderKey) }
+        var present = Set(running.map(\.orderKey))
+        return running + windowless.filter { present.insert($0.orderKey).inserted } // 多进程归属只生成一个应用项。
     }
 
     /// Shared arrangement: pinned block (all-desktops then this-desktop) followed
