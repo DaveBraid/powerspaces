@@ -1742,20 +1742,27 @@ h.test("layout commands split the allowed frame correctly") {
     h.ok(screen.target(for: .restore) == nil, "restore has no geometric target")
 }
 
-h.test("reservation thickness is measured from the screen edge to the glass edge") {
-    // 实测主屏：面板 (695,1311,1170,129)，玻璃在面板内偏移 (6,6,1158,78)。
-    // 玻璃顶边 = 1311 + 6 = 1317；从屏幕底边 1440 量起应预留 123pt。
-    let panel = CGRect(x: 695, y: 1311, width: 1170, height: 129)
-    let glassInPanel = CGRect(x: 6, y: 6, width: 1158, height: 78)
-    let screenTop: CGFloat = 0, screenBottom: CGFloat = 1440
-    let glassTop = panel.minY + glassInPanel.minY
-    let glassBottom = panel.minY + glassInPanel.maxY
-    h.eq(screenBottom - glassTop, 123, "bottom dock reserves down to the glass top edge")
-    // 顶部停靠时量的是玻璃底边。
-    h.eq(glassBottom - screenTop, 1395, "top dock measures from the glass bottom edge")
-    // 玻璃偏移必须计入：只用面板总高会多留不可见的透明带。
-    h.ok(screenBottom - glassTop < panel.height + (panel.minY - glassTop) + 1000,
-         "glass offset is reflected in the thickness")
+h.test("reservation measures to the glass inner edge, not the panel outer edge") {
+    // 实测底部停靠：panel=(6,827,1457,129)、玻璃=(6,6,1445,78)。
+    // 玻璃视图贴面板外侧，多出的留白在内侧 → 可见玻璃内沿 = 827 + (129-6-78) = 872。
+    // 若直接用面板外沿 827，会多留约 45pt 空隙（用户实测反馈的问题）。
+    let panel = CGRect(x: 6, y: 827, width: 1457, height: 129)
+    let glass = CGRect(x: 6, y: 6, width: 1445, height: 78)
+    let screenBottom: CGFloat = 956
+    let glassTop = panel.minY + (panel.height - glass.height - glass.minY)
+    h.eq(glassTop, 872, "glass inner edge on screen")
+    h.eq(screenBottom - glassTop, 84, "bottom dock reserve")
+    h.ok(screenBottom - panel.minY > screenBottom - glassTop,
+         "panel outer edge would over-reserve")
+}
+
+h.test("a dock flush with the screen edge reserves its whole glass thickness") {
+    // 面板外沿贴屏幕边（offset=0）时，预留就是玻璃厚度本身。
+    let panel = CGRect(x: 0, y: 878, width: 1470, height: 78)
+    let glass = CGRect(x: 0, y: 0, width: 1470, height: 78)
+    let screenBottom: CGFloat = 956
+    let glassTop = panel.minY + (panel.height - glass.height - glass.minY)
+    h.eq(screenBottom - glassTop, 78, "flush dock reserves exactly its glass")
 }
 
 h.test("window identity never depends on launchDate") {

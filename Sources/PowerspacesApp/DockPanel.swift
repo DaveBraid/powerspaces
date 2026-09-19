@@ -1286,12 +1286,17 @@ final class DockPanel: NSPanel {
         let primaryHeight = NSScreen.screens.first?.frame.maxY ?? screen.frame.maxY
         let screenTop = primaryHeight - screen.frame.maxY
         let screenBottom = primaryHeight - screen.frame.minY
-        // 玻璃在面板内的位置由 glassInPanel 给出（同为左上原点、y 向下），
-        // 因此各边外沿 = 面板对应边 + 玻璃在该侧的偏移。
-        let glassTop = panel.minY + glassInPanel.minY
-        let glassBottom = panel.minY + glassInPanel.maxY
-        let glassLeft = panel.minX + glassInPanel.minX
-        let glassRight = panel.minX + glassInPanel.maxX
+        // 玻璃视图在面板内**贴外侧**：面板比玻璃高，多出的留白在内侧。
+        // 因此可见玻璃的范围要从面板外沿往内量：外侧偏移 = 面板尺寸 − 玻璃尺寸 − 内侧偏移。
+        // 实测底部停靠：panel 129pt、玻璃 78pt、外侧偏移 6pt → 可见玻璃内沿 = 827 + 45 = 872，
+        // 与截图像素观测一致；若直接用面板外沿（827）会多留约 39pt 空隙。
+        let inset = { (panelLength: CGFloat, glassLength: CGFloat, offset: CGFloat) -> CGFloat in
+            max(0, panelLength - glassLength - offset)
+        }
+        let glassTop = panel.minY + inset(panel.height, glassInPanel.height, glassInPanel.minY)
+        let glassBottom = panel.maxY - inset(panel.height, glassInPanel.height, glassInPanel.minY)
+        let glassLeft = panel.minX + inset(panel.width, glassInPanel.width, glassInPanel.minX)
+        let glassRight = panel.maxX - inset(panel.width, glassInPanel.width, glassInPanel.minX)
         let thickness: CGFloat
         switch edge {
         case .bottom: thickness = screenBottom - glassTop
