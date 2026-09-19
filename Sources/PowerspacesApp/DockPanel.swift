@@ -1266,11 +1266,12 @@ final class DockPanel: NSPanel {
     var pointerInteractionFrame: NSRect { magnificationVisibleFrame ?? frame }
     private var magnificationRestFrame = NSRect.zero
 
-    /// 供窗口避让使用的静止预留：自屏幕物理边量起、到**可见玻璃内沿**为止的厚度。
+    /// 供窗口避让使用的静止预留：自屏幕物理边量起的占用厚度。
     ///
-    /// 必须量程序坞自己实际占用的位置，不能拿系统几何推断，也不能只取 `barThickness()`：
-    /// 面板窗口比玻璃更高（含悬停放大的余量），只按玻璃厚度预留会让窗口底边正好压在
-    /// 程序坞上。这里用玻璃视图在屏幕坐标下的实际内沿。
+    /// 取面板自身的布局尺寸（`panelSize()` 的横轴），而不是窗口 `frame` 或玻璃视图：
+    /// - `frame` 在定位/动画过程中读到的位置与窗口实际占位不一致（实测读回 y=0）；
+    /// - 玻璃视图比面板小（实测 78pt 对 129pt），按玻璃量会让窗口压在程序坞上。
+    /// 面板尺寸由偏好与图标尺寸决定，是稳定且可预期的占用范围。
     func layoutReservation() -> DockReservation? {
         guard let screen = boundScreen else { return nil }
         let edge = DockEdge(rawValue: Preferences.shared.barPosition.rawValue) ?? .bottom
@@ -1281,18 +1282,12 @@ final class DockPanel: NSPanel {
                                    isHiddenOrAutoHiding: true)
         }
         layoutIfNeeded()
-        // AppKit 屏幕坐标（左下原点）→ 距该屏幕对应边的距离。
-        let glass = convertToScreen(effect.convert(effect.bounds, to: nil))
-        let thickness: CGFloat
-        switch edge {
-        case .bottom: thickness = glass.minY - screen.frame.minY
-        case .top: thickness = screen.frame.maxY - glass.maxY
-        case .left: thickness = glass.minX - screen.frame.minX
-        case .right: thickness = screen.frame.maxX - glass.maxX
-        }
+        let size = panelSize()
+        let thickness = edge.isVertical ? size.width : size.height
         return DockReservation(displayID: screen.displayID, edge: edge,
                                thickness: max(0, thickness), isHiddenOrAutoHiding: false)
     }
+
 
     private var magnificationRestCross: CGFloat = 0
     private var magnificationProgress: CGFloat = 0
