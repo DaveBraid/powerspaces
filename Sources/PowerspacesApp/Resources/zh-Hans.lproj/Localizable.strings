@@ -663,3 +663,6 @@
 "Jump to the app's desktop" = "跳到应用所在桌面";
 "Hold this key while clicking a dock icon to switch to the desktop the app is on instead of opening a window here. Only applies when the app's window is on another desktop." = "按住该键点击程序坞图标时，直接切换到应用所在的桌面，而不是在当前桌面新建窗口。仅在应用窗口位于其他桌面时生效。";
 "Control only" = "仅 Control";
+
+// 单实例应用在其他桌面时的「搬到本桌面」策略。
+"Move it to this desktop" = "搬到本桌面";

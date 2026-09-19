@@ -41,6 +41,12 @@ public enum StrategyKind: String, Codable, Equatable, CaseIterable, Sendable {
     case cmdN
     /// Single-instance apps — just activate and accept the jump to their Space.
     case focusOnly
+    /// 单实例应用已在其他桌面：把它**搬到现在这个桌面**再聚焦，用户不必跳过去。
+    ///
+    /// 走系统 Dock「分配给 → 这个桌面」背后的进程级接口
+    /// （`CGSProcessAssignToSpace`，见 `WindowSpaceMover`），因此已有窗口会立即跟过来，
+    /// 后续新窗口也落在这里。搬移后重新读取归属确认；失败时降级为警告，不静默跳桌面。
+    case moveHere
 }
 
 extension StrategyKind {
@@ -50,7 +56,7 @@ extension StrategyKind {
     /// window" grouping.
     public var makesNewWindow: Bool {
         switch self {
-        case .warn, .quitReopen: return false
+        case .warn, .quitReopen, .moveHere: return false
         case .newInstance, .openArgs, .appleScript, .cmdN, .focusOnly: return true
         }
     }

@@ -401,5 +401,35 @@ DockButton.indicator(mode:isLauncher:isRunning:windowCount:vertical:)
 - yabai 的 [Disabling System Integrity Protection](https://github.com/asmvik/yabai/wiki/Disabling-System-Integrity-Protection) 说明：它的 `window --space` 等空间操作依赖关闭 SIP 的脚本附加件。
 - [DockLift 的 SpaceMover](file:///Users/ethanlee/Documents/Codex/2026-09-18/referenced-chatgpt-conversation-this-is-an/work/DockLift-SpaceMover.swift) 也自述这是 best-effort：用 `CGSMoveWindowsToManagedSpace` / `CGSAddWindowsToSpaces` 之后**必须用公开的 `CGWindowList` 复核**，因为「on recent systems the CGS path may silently no-op for windows the process does not own」。我按它的写法（`CGSMoveWindowsToManagedSpace(cid, windows, spaceID: UInt64)`）复测，仍为 no-op——与 SIP 未关闭一致。
 
-**结论**：该策略在本机不可实现，且 `AGENTS.md` 明确要求「日常增强不应要求关闭 SIP」，因此不纳入。探针代码已全部撤销；`AGENTS.md` 中「跨 Space 移窗尚未实现」的判断在本机仍然成立。若将来在关闭 SIP 的机器上重试，应先写一个只做「从当前 Space 移除」的判别实验——它比端到端搬移更快证伪，且不会留下半成品。
+**更正（同日）**：以上只说明「**窗口级**」那套接口不可用。真正可用的是**进程级**接口——
+见下一节，`CGSProcessAssignToSpace` 在 SIP 开启下工作正常。探针代码已全部撤销；`AGENTS.md` 中「跨 Space 移窗尚未实现」的判断在本机仍然成立。若将来在关闭 SIP 的机器上重试，应先写一个只做「从当前 Space 移除」的判别实验——它比端到端搬移更快证伪，且不会留下半成品。
+
+### 跨 Space 移窗的正解：进程级 `CGSProcessAssignToSpace`（2026-09-20）
+
+前一轮否掉了「窗口级」接口（`CGSAddWindowsToSpaces` / `CGSMoveWindowsToManagedSpace` 在 SIP 开启时静默 no-op），但**系统 Dock 的「选项 → 分配给 → 这个桌面」是能做到的**。顺着这条线在 Dock 二进制里找到了它真正调用的接口：
+
+```bash
+nm -u /System/Library/CoreServices/Dock.app/Contents/MacOS/Dock | grep -i space
+#   _CGSProcessAssignToSpace
+#   _CGSProcessAssignToAllSpaces
+```
+
+`CGSProcessAssignToSpace(cid, pid, spaceID)` 是**进程级**语义：改变「该进程的窗口属于哪个桌面」，因此已有窗口立即跟过去，后续新窗口也落在那里。与窗口级那套完全不同，**在 SIP 开启的系统上可用**。
+
+实测（内建屏，Desktop 1 = space 3、Desktop 2 = space 7）：
+
+| 对象 | 结果 |
+| --- | --- |
+| ChatGPT 窗口（单实例） | `spaces=[3]` → `[7]`，来回 3 次稳定 |
+| Tabbit（多窗口） | 两个窗口**同时**跟着改（进程级语义的直接体现） |
+| PS 坞点击端到端 | 在 Desktop 2 点 PS 坞的 ChatGPT 图标 → 窗口从 space 3 过来并聚焦（`onscreen=true`） |
+
+实现要点：
+
+- `WindowSpaceMover`（`Sources/SpaceKit/WindowSpaceMover.swift`）用 `dlsym` 动态解析该符号，系统移除时照常启动、策略降级为警告；`isAvailable` 供 UI 判断。
+- **接口不返回错误**，因此必须按结果确认：搬移后重新读取该 pid 全部窗口的归属，必须**恰好**等于目标 Space，否则抛错。`CGSSpaceProvider.spaces(forPID:)` 提供这个复核。
+- 新策略 `.moveHere`「搬到本桌面」：单实例应用在其他桌面时，点击即把它搬过来再聚焦——不新建实例、不关闭应用（区别于 `quitReopen`）、也不把用户带走。失败降级为警告。
+- 与「Control+点击跳转」互补：前者搬窗口过来，后者跳过去；都由用户选择。
+
+**仍属私有接口**：本机 macOS 27.0 (26A428) 验证通过，不保证未来版本；所有调用点都带降级路径，不宣称长期兼容。
 

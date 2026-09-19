@@ -351,6 +351,20 @@ public final class CGSSpaceProvider: SpaceProviding {
         return WindowAX.isMinimized(window)
     }
 
+    /// 读取某个进程全部窗口当前所属的 Space 集合；用于确认 Space 搬移结果。
+    public func spaces(forPID pid: pid_t) -> Set<SpaceID> {
+        let list = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements],
+                                              kCGNullWindowID) as? [[String: Any]] ?? []
+        var result: Set<SpaceID> = []
+        for entry in list {
+            guard (entry[kCGWindowOwnerPID as String] as? pid_t) == pid,
+                  let number = entry[kCGWindowNumber as String] as? Int,
+                  (entry[kCGWindowLayer as String] as? Int) == 0 else { continue }
+            for space in spaces(for: CGWindowID(number)) { result.insert(space) }
+        }
+        return result
+    }
+
     private func spaces(for windowID: CGWindowID) -> [SpaceID] {
         let ids = [NSNumber(value: windowID)] as CFArray
         guard let raw = CGSCopySpacesForWindows(cid, kCGSSpaceAll, ids)?.takeRetainedValue() as? [NSNumber] else {

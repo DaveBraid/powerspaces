@@ -663,3 +663,6 @@
 "Jump to the app's desktop" = "Jump to the app's desktop";
 "Hold this key while clicking a dock icon to switch to the desktop the app is on instead of opening a window here. Only applies when the app's window is on another desktop." = "Hold this key while clicking a dock icon to switch to the desktop the app is on instead of opening a window here. Only applies when the app's window is on another desktop.";
 "Control only" = "Control only";
+
+// 单实例应用在其他桌面时的「搬到本桌面」策略。
+"Move it to this desktop" = "Move it to this desktop";

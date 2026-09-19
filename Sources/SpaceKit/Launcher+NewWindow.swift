@@ -91,6 +91,8 @@ extension Launcher {
             // app's Space, so there's nothing to detect or warn about here.
             activate(target)
             return .newWindow(.focusOnly)
+        case .moveHere:
+            return moveProcessHere(target: target, snapshot: snapshot)
         }
     }
 
@@ -212,5 +214,39 @@ extension Launcher {
         }
         openApp(target, newInstance: false)
         return .reopenedOnCurrentSpace
+    }
+}
+
+
+extension Launcher {
+    /// 把单实例应用**搬到现在这个桌面**再聚焦。
+    ///
+    /// 为什么这样做：单实例应用既不能新建实例，激活又必然把用户带到它的桌面。
+    /// 搬移让「在这台桌面用它」成立，且不关闭应用、不丢状态（区别于 quitReopen）。
+    ///
+    /// 用进程级分配接口（Dock「分配给」同款）：已有窗口立即跟过来，后续新窗口也落在这里。
+    /// 失败（接口缺失或系统未接受）时降级为警告，不静默把用户带走。
+    func moveProcessHere(target: AppTarget, snapshot: SpaceSnapshot) -> LaunchOutcome {
+        let currentSpace = snapshot.activeSpaceID
+        let elsewhere = snapshot.windows(of: target).contains { window in
+            !window.spaceIDs.isEmpty && !window.spaceIDs.contains(currentSpace)
+        }
+        guard elsewhere else {
+            // 已经在这里或没有窗口可搬：直接聚焦，不打扰。
+            activate(target)
+            return .newWindow(.moveHere)
+        }
+        guard let pid = snapshot.windows(of: target).first?.pid,
+              let provider = provider as? CGSSpaceProvider else {
+            return warned(target, "could not be moved to this desktop.")
+        }
+        do {
+            try WindowSpaceMover.assign(pid: pid, to: currentSpace,
+                                       confirmedSpaces: provider.spaces(forPID:))
+        } catch {
+            return warned(target, "could not be moved to this desktop.")
+        }
+        activate(target)
+        return .newWindow(.moveHere)
     }
 }

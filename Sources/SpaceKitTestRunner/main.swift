@@ -1701,6 +1701,36 @@ h.test("window count follows the current Space only") {
          "the other Space sees its own window")
 }
 
+print("Move to this desktop")
+h.test("moveHere is offered as a strategy and reserved for single-instance apps") {
+    // 它不通过应用自身的「新建窗口」路径，因此在分组里与 warn / quitReopen 同类。
+    h.ok(!StrategyKind.moveHere.makesNewWindow, "moveHere does not make a new window")
+    h.eq(StrategyKind(rawValue: "moveHere"), .moveHere, "raw value stays stable for saved configs")
+    // 可被 CaseIterable 枚举到（设置页的下拉即由它驱动）。
+    h.ok(StrategyKind.allCases.contains(.moveHere), "is part of the strategy enum used by the UI")
+}
+
+h.test("the process-level move reports failure instead of silently doing nothing") {
+    // 确认闭包返回的归属不是目标桌面时，必须抛错（不能静默成功）。
+    var landed: Set<SpaceID> = [3]
+    do {
+        _ = try WindowSpaceMover.assign(pid: 4242, to: 7, confirmedSpaces: { _ in landed })
+        h.ok(false, "a window still on another desktop must not report success")
+    } catch {
+        h.ok(true, "reports a failure when the window did not land")
+    }
+    // 与目标一致时才算成功。
+    landed = [7]
+    do {
+        let space = try WindowSpaceMover.assign(pid: 4242, to: 7, confirmedSpaces: { _ in landed })
+        h.eq(space, 7, "reports the space it landed on")
+    } catch {
+        // 本机若不提供该私有接口，走这条分支也是可接受的降级。
+        h.ok(WindowSpaceMover.isAvailable == false,
+             "only unavailable-API failure is acceptable here")
+    }
+}
+
 print("Jump modifier")
 h.test("the jump modifier focuses the app's desktop instead of the configured strategy") {
     // 窗口在其他桌面 + 按住跳转键 → 强制 focusOnly，不套用应用自己的新建窗口策略。

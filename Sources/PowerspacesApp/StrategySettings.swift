@@ -18,6 +18,7 @@ extension StrategyKind {
         case .quitReopen: return L10n.string("Quit there and reopen here")
         case .cmdN: return L10n.string("Synthesize ⌘N")
         case .focusOnly: return L10n.string("Focus (accept the jump)")
+        case .moveHere: return L10n.string("Move it to this desktop")
         }
     }
 }
@@ -45,7 +46,7 @@ enum SingleInstance {
 
     /// The strategies offered as a global default for unknown apps. (`appleScript`
     /// is excluded — it needs a per-app script.)
-    static let defaultChoices: [StrategyKind] = [.newInstance, .openArgs, .cmdN, .focusOnly, .warn]
+    static let defaultChoices: [StrategyKind] = [.newInstance, .openArgs, .cmdN, .focusOnly, .moveHere, .warn]
 
     /// One of the curated single-instance apps, for which macOS can't reliably
     /// give a second window — so "Open a new window" is labelled experimental.
