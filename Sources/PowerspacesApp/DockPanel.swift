@@ -1301,8 +1301,10 @@ final class DockPanel: NSPanel {
         switch edge {
         case .bottom: thickness = screenBottom - glassTop
         case .top: thickness = glassBottom - screenTop
-        case .left: thickness = screen.frame.maxX - glassLeft
-        case .right: thickness = glassRight - screen.frame.minX
+        // 左右两侧：预留 = 从本侧屏幕边量到玻璃内沿的距离。
+        // 玻璃贴屏幕外沿，所以左侧量到玻璃右边（glassRight），右侧量到玻璃左边（glassLeft）。
+        case .left: thickness = glassRight - screen.frame.minX
+        case .right: thickness = screen.frame.maxX - glassLeft
         }
         WindowLayoutDiagnostics.record(
             "dockGeom display=\(screen.displayID) edge=\(edge.rawValue) panel=\(panel) glassInPanel=\(glassInPanel) thickness=\(thickness)")

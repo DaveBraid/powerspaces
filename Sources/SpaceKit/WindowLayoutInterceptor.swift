@@ -853,17 +853,42 @@ extension WindowLayoutInterceptor {
         stateLock.lock()
         observedFrames[identity] = current
         stateLock.unlock()
-        // 只有变大才纠正。
-        if let previous, current.height <= previous.height + 1 { return }
+        // 只有变大才纠正（横向或纵向任一变大）。
+        if let previous, current.height <= previous.height + 1, current.width <= previous.width + 1 { return }
         let availableScreens = MainActor.assumeIsolated { screensProvider?() ?? [] }
         guard let screen = screen(containing: current, in: availableScreens) else { return }
         let allowed = screen.allowedFrame
-        guard current.maxY > allowed.maxY + 4 else { return }   // 未明显越界
+        // 越界方向取决于程序坞停靠边：底部/顶部看竖向，左侧/右侧看横向。
+        // 只按 maxY 判断会让左右停靠时的外部改尺寸完全失效。
+        let edge = screen.reservation?.edge ?? .bottom
+        let tolerance: CGFloat = 4
         guard !generationInFlight(identity) else { return }     // 正在动画中不打断
         var target = current
-        target.size.height = min(current.height, allowed.maxY - current.minY)
-        target.origin.y = allowed.maxY - target.height
-        guard target.minY >= allowed.minY - 1, target.height > 160 else { return }
+        switch edge {
+        case .bottom:
+            guard current.maxY > allowed.maxY + tolerance else { return }
+            target.size.height = min(current.height, allowed.maxY - current.minY)
+            target.origin.y = allowed.maxY - target.height
+        case .top:
+            // 顶部坞：预留区在屏幕上方，越界表现为上边界压进预留带。
+            // 下移的同时必须收高度，否则底边会超出屏幕。
+            guard current.minY < allowed.minY - tolerance else { return }
+            target.origin.y = allowed.minY
+            target.size.height = min(current.height, allowed.maxY - allowed.minY)
+        case .left:
+            // 左侧坞：预留区在屏幕左边，越界表现为**左边界压进预留带**（minX < allowed.minX），
+            // 而不是看右边界——右边界本来就等于可用区右边界。
+            guard current.minX < allowed.minX - tolerance else { return }
+            target.size.width = min(current.width, allowed.maxX - allowed.minX)
+            target.origin.x = allowed.minX
+        case .right:
+            // 右侧坞：预留区在屏幕右边，越界表现为**右边界越过可用区右边界**。
+            guard current.maxX > allowed.maxX + tolerance else { return }
+            target.size.width = min(current.width, allowed.maxX - allowed.minX)
+            target.origin.x = allowed.maxX - target.width
+        }
+        guard target.width > 160, target.height > 160,
+              target.minX >= allowed.minX - 1, target.minY >= allowed.minY - 1 else { return }
         let wrote = write(target, to: window, previous: current)
         let actual = frame(of: window) ?? current
         log("SNAP_OFF_DOCK identity=\(identity.logDescription) from=\(current) target=\(target) actual=\(actual) wrote=\(wrote)")
