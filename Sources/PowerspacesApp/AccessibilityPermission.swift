@@ -42,6 +42,20 @@ enum AccessibilityPermission {
         _ = AXIsProcessTrustedWithOptions(options)
     }
 
+    /// 用户主动打开授权引导；复用系统提示与设置入口，不自动修改权限。
+    @MainActor static func showAuthorizationGuide() {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = L10n.string("Enable Accessibility for Powerspaces")
+        alert.informativeText = L10n.string(
+            "Allow Powerspaces in System Settings → Privacy & Security → Accessibility to read Dock notification badges and manage windows. If Powerspaces is missing, add /Applications/Powerspaces.app with the + button. If it is already enabled but shows Not granted here, switch it off and on again; use Reset Permission if that does not help.")
+        alert.addButton(withTitle: L10n.string("Open System Settings"))
+        alert.addButton(withTitle: L10n.string("Cancel"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        prompt()
+        openSettings()
+    }
+
     /// Clear the app's Accessibility approval from macOS's TCC database, dropping any
     /// stale entry left by an earlier build. Returns true on success. Doesn't need
     /// sudo: it only touches the current user's permissions.

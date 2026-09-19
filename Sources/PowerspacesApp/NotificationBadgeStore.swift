@@ -53,6 +53,11 @@ final class NotificationBadgeStore: @unchecked Sendable {
         queue.async { self.schedule(after: 0) }
     }
 
+    /// 授权后主动刷新，避免等待失败退避；仅由权限界面返回事件触发。
+    func refreshAfterPermissionGrant() {
+        queue.async { self.failures = 0; self.schedule(after: 0) }
+    }
+
     /// 合并连续 AX 事件，最多每两秒读一次；不重启鼠标动画或重建 Dock。
     private func notified() {
         queue.async {

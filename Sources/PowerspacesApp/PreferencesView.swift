@@ -865,9 +865,7 @@ struct PreferencesView: View {
                         .help(L10n.string("Show the number of the desktop you are on next to the menu-bar icon."))
                 }
                 LoginItemToggle()
-                if advanced {
-                    AccessibilityResetRow()
-                }
+                AccessibilityResetRow() // 授权是基础入口，不藏在高级选项里。
                 HStack {
                     Text("Powerspaces")
                     Spacer()
@@ -1357,13 +1355,18 @@ private struct AccessibilityResetRow: View {
             "Whether macOS currently lets Powerspaces control windows. Needed to close or minimize "
             + "windows and read window titles."))
         HStack {
-            Button(L10n.string("Open Settings…")) { AccessibilityPermission.openSettings() }
+            Button(L10n.string("Enable / Manage Permission…")) { AccessibilityPermission.showAuthorizationGuide() }
                 .help(L10n.string("Open System Settings ▸ Privacy & Security ▸ Accessibility."))
             Spacer()
             Button(L10n.string("Reset Permission…")) { AccessibilityPermission.confirmResetAndRelaunch() }
                 .help(L10n.string(
                     "Clear Powerspaces' Accessibility permission and relaunch, so a stale grant left "
                     + "by an earlier build can be re-approved."))
+        }
+        .onAppear { trusted = AccessibilityPermission.isTrusted }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            trusted = AccessibilityPermission.isTrusted // 从系统设置返回后立即刷新，不常驻轮询。
+            if trusted { NotificationBadgeStore.shared.refreshAfterPermissionGrant() }
         }
     }
 }
