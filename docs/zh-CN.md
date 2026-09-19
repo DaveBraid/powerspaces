@@ -146,3 +146,5 @@ open /Applications/Powerspaces.app
 
 
 缩放期间 PS 一次预留窗口空间，只更新内部玻璃与原有 AppKit 图标，避免每帧重排整条程序坞或改变系统窗口尺寸；透明预留区不接管点击，缩回后恢复普通布局。可用 `swift run --build-system native -c release PowerspacesApp --check-dock-performance` 在独立窗口测量持续绘制成本（临时配置、12 个图标及混合标题）；它报告显示回调和同步工作耗时，不将其冒充 GPU 呈现帧率。
+
+窗口预览默认关闭，入口在“效果”页；启用后出现独立屏幕录制状态与授权按钮，用途说明始终可见。屏幕录制不与辅助功能合并申请，悬停不会弹系统授权请求，授权后可能需重启 PS。`--check-window-preview` 使用临时设置检查四向布局、非激活窗口和图片释放；`--check-preview-permissions` 只报告当前进程的两项权限状态，应从正式安装的应用执行；命令行启动还可能受宿主权限归因影响，以正常启动的设置页状态为准。

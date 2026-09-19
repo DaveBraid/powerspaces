@@ -24,6 +24,7 @@ final class DockItemCell: NSButtonCell {
 }
 
 final class DockButton: NSButton {
+    var onPointerLeft: (() -> Void)?
     var onPointerMoved: ((NSPoint) -> Void)? // 即时屏幕坐标，不重用布局前的事件坐标。
     var usesSharedMagnification = false
     var restingWidth: CGFloat = 0
@@ -191,7 +192,7 @@ final class DockButton: NSButton {
         onPointerMoved?(NSEvent.mouseLocation)
     }
     override func mouseMoved(with event: NSEvent) { onPointerMoved?(NSEvent.mouseLocation) }
-    override func mouseExited(with event: NSEvent) { setHover(false) }
+    override func mouseExited(with event: NSEvent) { setHover(false); onPointerLeft?() }
     override func rightMouseDown(with event: NSEvent) { onRightClick?() }
     /// Button number 2 is the middle mouse button (0 = left, 1 = right); other
     /// extra buttons are ignored.

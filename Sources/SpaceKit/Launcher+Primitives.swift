@@ -21,7 +21,10 @@ extension Launcher {
     /// instance and closes its own window ~8 s later (the "opens briefly then closes"
     /// bug). For that one path we raise the window via Accessibility but never call
     /// `activate()`; the window is already on the current Space, so it's still visible.
-    func raise(windowID: CGWindowID, pid: pid_t, activateApp: Bool = true) {
+    /// 预览可要求精确窗口成功；缺省仍保留历史激活与 Finder 重试逻辑，返回置顶结果。
+    @discardableResult
+    func raise(windowID: CGWindowID, pid: pid_t, activateApp: Bool = true,
+               requireExactWindow: Bool = false) -> Bool {
         // Pull the window out of the Dock and bring it forward. `unminimize` first
         // because kAXRaiseAction does nothing to a minimized window.
         func tryRaise() -> Bool {
@@ -30,10 +33,13 @@ extension Launcher {
             return AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString) == .success
         }
         var raised = tryRaise()
+        if requireExactWindow && !raised { return false } // 预览不退化为可能跳桌面的仅激活应用。
         // The window is on the current Space, so activating does not jump away. Skipped
         // for a fresh second instance (`activateApp == false`) so it isn't induced to
         // hand off and close its window.
         if activateApp { NSRunningApplication(processIdentifier: pid)?.activate() }
+        if requireExactWindow { return tryRaise() } // 激活后再次置顶选定窗口，避免应用恢复其他窗口。
+
         // Right after a "quit (all desktops)" relaunch, Finder restores its window
         // but its AX element isn't ready for a beat — the lookup above misses, so
         // we'd only activate the app (menu bar flips to Finder) without the window
@@ -46,6 +52,7 @@ extension Launcher {
                 raised = tryRaise()
             }
         }
+        return raised
     }
 
     func minimize(windowID: CGWindowID, pid: pid_t) {

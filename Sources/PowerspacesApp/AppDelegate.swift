@@ -291,6 +291,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// screen a new window opens on all target *this* dock's desktop rather than
     /// the active one.
     private func configure(_ dock: DockPanel, displayUUID: String) {
+        dock.onPreviewWindows = { [weak self] app, space, completion in
+            guard let self, let pid = app.pid else { completion([]); return }
+            let launcher = UnsafeTransfer(self.launcher)
+            let reply = UnsafeTransfer(completion)
+            let includeHidden = Preferences.shared.showHiddenWindows
+            self.launcherQueue.async {
+                let windows = try? launcher.value.previewWindows(pid: pid, bundleID: app.bundleID,
+                    displayUUID: displayUUID, spaceUUID: space, includeHidden: includeHidden)
+                DispatchQueue.main.async { reply.value(windows) }
+            }
+        }
+        dock.onPreviewSelect = { [weak self] app, windowID, space in
+            guard let pid = app.pid else { return }
+            self?.runLauncher {
+                _ = try? $0.focusPreviewWindow(windowID: windowID, pid: pid, target: app.target,
+                                               displayUUID: displayUUID, spaceUUID: space)
+            }
+        }
         dock.onSelect = { [weak self] app, forceNew in
             guard let self else { return }
             // A per-window icon ("Windows" feature) carries the exact window to

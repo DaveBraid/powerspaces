@@ -622,3 +622,18 @@
 "Allow Powerspaces in System Settings → Privacy & Security → Accessibility to read Dock notification badges and manage windows. If Powerspaces is missing, add /Applications/Powerspaces.app with the + button. If it is already enabled but shows Not granted here, switch it off and on again; use Reset Permission if that does not help." = "Allow Powerspaces in System Settings → Privacy & Security → Accessibility to read Dock notification badges and manage windows. If Powerspaces is missing, add /Applications/Powerspaces.app with the + button. If it is already enabled but shows Not granted here, switch it off and on again; use Reset Permission if that does not help.";
 
 "Accessibility lets Powerspaces read window titles, focus, move, minimize and close windows, and read notification badges from the macOS Dock to display them in the Powerspaces dock." = "Accessibility lets Powerspaces read window titles, focus, move, minimize and close windows, and read notification badges from the macOS Dock to display them in the Powerspaces dock.";
+
+// 静态窗口预览与独立屏幕录制授权。
+"Window previews" = "Window previews";
+"Screen Recording" = "Screen Recording";
+"Window previews use Screen Recording to capture window thumbnails once when opened. Images stay in memory, are released when closed, and are never saved or uploaded. Accessibility is separately required to focus a selected window. No Screen Recording permission is needed when previews are off." = "Window previews use Screen Recording to capture window thumbnails once when opened. Images stay in memory, are released when closed, and are never saved or uploaded. Accessibility is separately required to focus a selected window. No Screen Recording permission is needed when previews are off.";
+"Enable Screen Recording for window previews" = "Enable Screen Recording for window previews";
+"Allow Powerspaces in System Settings → Privacy & Security → Screen Recording. This permission is only used for static window previews. You may need to restart Powerspaces after granting it." = "Allow Powerspaces in System Settings → Privacy & Security → Screen Recording. This permission is only used for static window previews. You may need to restart Powerspaces after granting it.";
+"Window preview unavailable" = "Window preview unavailable";
+"Window is minimized or hidden" = "Window is minimized or hidden";
+"Enable Screen Recording in Settings → Effects for window previews." = "Enable Screen Recording in Settings → Effects for window previews.";
+"Loading window previews…" = "Loading window previews…";
+"No windows on this desktop" = "No windows on this desktop";
+"needs Accessibility permission to focus this window." = "needs Accessibility permission to focus this window.";
+"this window is no longer available on this desktop." = "this window is no longer available on this desktop.";
+"could not focus this window." = "could not focus this window.";

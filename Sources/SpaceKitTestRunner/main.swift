@@ -201,6 +201,34 @@ struct FakeProvider: SpaceProviding {
     func currentSpaceID() throws -> SpaceID { snap.activeSpaceID }
 }
 
+h.test("window preview uses current desktop, display and process ownership") {
+    let a = CGRect(x: 0, y: 0, width: 1000, height: 800)
+    let b = CGRect(x: 1000, y: 0, width: 1000, height: 800)
+    let display = DisplaySpaceInfo(displayUUID: "A", bounds: a, currentSpaceID: 1,
+                                   currentSpaceUUID: "space-A", isActive: true)
+    let local = CGRect(x: 100, y: 100, width: 400, height: 300)
+    let remote = CGRect(x: 1100, y: 100, width: 400, height: 300)
+    let windows = [
+        WindowInfo(windowID: 1, pid: 100, ownerName: "Same name", bundleID: "app", spaceIDs: [1], bounds: local),
+        WindowInfo(windowID: 2, pid: 100, ownerName: "Same name", bundleID: "app", spaceIDs: [2], bounds: local, isOnscreen: false),
+        WindowInfo(windowID: 3, pid: 100, ownerName: "Same name", bundleID: "app", spaceIDs: [1], bounds: remote),
+        WindowInfo(windowID: 4, pid: 200, ownerName: "Same name", bundleID: "other", spaceIDs: [1], bounds: local),
+        WindowInfo(windowID: 5, pid: 100, ownerName: "Same name", bundleID: "app", spaceIDs: [1], bounds: local, isOnscreen: false, isMinimized: true),
+        WindowInfo(windowID: 6, pid: 100, ownerName: "Same name", bundleID: "app", spaceIDs: [1], bounds: local, isOnscreen: false, isHidden: true)
+    ]
+    let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: windows)
+    h.eq(WindowPreview.windows(pid: 100, bundleID: "app", snapshot: snapshot,
+                              display: display, allDisplays: [a, b]).map(\.windowID), [1, 5, 6])
+    h.eq(WindowPreview.windows(pid: 100, bundleID: "other", snapshot: snapshot,
+                              display: display, allDisplays: [a, b]).count, 0)
+    let launcher = Launcher(provider: FakeProvider(snap: snapshot, displaysList: [display,
+        DisplaySpaceInfo(displayUUID: "B", bounds: b, currentSpaceID: 3, currentSpaceUUID: "space-B", isActive: false)]), config: .defaults, warn: { _ in })
+    h.eq(try launcher.previewWindows(pid: 100, bundleID: "app", displayUUID: "A",
+                                     spaceUUID: "stale-space", includeHidden: true).count, 0)
+    h.eq(try launcher.previewWindows(pid: 100, bundleID: "app", displayUUID: "A",
+                                     spaceUUID: "space-A", includeHidden: false).map(\.windowID), [1, 5])
+}
+
 let config = StrategyConfig.defaults
 let firefox = AppTarget(bundleID: "org.mozilla.firefox", name: "Firefox")
 

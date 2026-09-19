@@ -13,6 +13,9 @@ import AppKit
 /// calls them (on launch, during layout, and from `deinit`); the rest are private
 /// to this file.
 extension DockPanel {
+    /// 预览延迟关闭后恢复自动隐藏倒计时，不依赖下一次鼠标移动。
+    func previewDidClose() { if autoHideActive { scheduleHideIfIdle() } }
+
     /// (Re)configure auto-hide from preferences. Installs or tears down the pointer
     /// monitor and either starts the hide countdown or fully reveals the bar.
     /// Called on launch (`show`) and on every preferences change (`applyAppearance`).
@@ -20,6 +23,7 @@ extension DockPanel {
         // A screen showing a full-screen app with the "hide" preference removes the
         // bar entirely (it can't be revealed): tear down the auto-hide machinery.
         if fullyHidden {
+            WindowHoverPreview.shared.close(for: self)
             cancelHideTimer()
             removeMouseMonitor()
             resetMagnification()
@@ -30,7 +34,7 @@ extension DockPanel {
         // (re)configuring.
         if !isVisible { orderFrontRegardless() }
         // 缩放也需要跨应用的离开事件，不能只依赖 tracking area 的退出回调。
-        if autoHideActive || Preferences.shared.hoverEnabled { installMouseMonitor() }
+        if autoHideActive || Preferences.shared.hoverEnabled || Preferences.shared.windowPreviewEnabled { installMouseMonitor() }
         else { removeMouseMonitor() }
         if autoHideActive {
             // Re-assert the hidden geometry (in case the animation *type* changed
@@ -171,12 +175,14 @@ extension DockPanel {
         guard globalMouseMonitor == nil else { return }
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
+            if let self { WindowHoverPreview.shared.pointerMoved(for: self) }
             self?.updateMagnificationMouseAcceptance(at: NSEvent.mouseLocation)
             self?.endMagnificationIfPointerLeft(at: NSEvent.mouseLocation, deliveredElsewhere: true)
             self?.handlePointerMoved()
         }
         localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
             if let self {
+                WindowHoverPreview.shared.pointerMoved(for: self)
                 self.updateMagnificationMouseAcceptance(at: NSEvent.mouseLocation)
                 self.endMagnificationIfPointerLeft(at: NSEvent.mouseLocation,
                                                    deliveredElsewhere: event.window !== self)
@@ -227,6 +233,7 @@ extension DockPanel {
     /// the floating bar (so crossing the edge-gap to reach the bar can't trigger a
     /// hide). Uses the *shown* frame so it's correct even while the bar is hidden.
     private func pointerIsOverBar() -> Bool {
+        if WindowHoverPreview.shared.keepsOpen(self) { return true }
         if pointerInRevealBand() { return true }
         guard let screen = boundScreen else { return false }
         let f = screen.frame

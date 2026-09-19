@@ -127,6 +127,7 @@ final class Preferences: ObservableObject {
 
     private enum K {
         static let language = "language" // 仅保存 en / zh-Hans，不依赖翻译后的显示名称。
+        static let windowPreviewEnabled = "windowPreviewEnabled"
         static let hoverEnabled = "hoverEnabled"
         static let runningDotGap = "runningDotGap"
         static let dockDividerEnabled = "dockDividerEnabled"
@@ -238,6 +239,7 @@ final class Preferences: ObservableObject {
             // (non-preset) values — icon size 39, dock height 45, box outline 0.5 — so
             // each one's `…Custom` flag is registered true too, which shows the slider
             // at that exact value instead of an empty "Custom…" dropdown.
+            K.windowPreviewEnabled: false, // 预览须主动启用，关闭时不申请屏幕录制。
             K.hoverEnabled: true,
             K.runningDotGap: 5.0, // 图标边框到圆点的留白，单位点，范围 0…20。
             K.dockDividerEnabled: true,
@@ -413,6 +415,7 @@ final class Preferences: ObservableObject {
 
     // MARK: Non-numeric properties
 
+    var windowPreviewEnabled: Bool { get { bln(K.windowPreviewEnabled) } set { setBln(newValue, K.windowPreviewEnabled) } }
     var hoverEnabled: Bool { get { bln(K.hoverEnabled) } set { setBln(newValue, K.hoverEnabled) } }
     var warningsEnabled: Bool { get { bln(K.warningsEnabled) } set { setBln(newValue, K.warningsEnabled) } }
     var barPosition: BarPosition { get { raw(K.barPosition, .bottom) } set { setRaw(newValue, K.barPosition) } }

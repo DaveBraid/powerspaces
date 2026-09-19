@@ -10,7 +10,7 @@ import SpaceKit
 // callbacks (onPinHere, onSetStrategy, …); no other DockPanel internals are touched.
 extension DockPanel: NSMenuDelegate {
     /// 菜单跟踪期间冻结会移动或重建锚点的更新，关闭后由正常刷新恢复。
-    func menuWillOpen(_ menu: NSMenu) { isContextMenuOpen = true }
+    func menuWillOpen(_ menu: NSMenu) { WindowHoverPreview.shared.close(for: self); isContextMenuOpen = true }
     func menuDidClose(_ menu: NSMenu) { isContextMenuOpen = false; resetMagnification() }
 
 

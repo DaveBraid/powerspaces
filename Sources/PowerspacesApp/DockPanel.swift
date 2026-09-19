@@ -11,6 +11,14 @@ final class DockPanel: NSPanel {
     /// A click on an icon: activate the app. Passes the whole `DockApp` (not just
     /// the target) so a per-window icon (the "Windows" feature) can carry its
     /// specific `windowID`. `forceNew` is set when the force-new modifier is held.
+    override func orderOut(_ sender: Any?) {
+        WindowHoverPreview.shared.close(for: self)
+        super.orderOut(sender)
+    }
+
+    var onPreviewWindows: ((DockApp, String, @escaping ([WindowInfo]?) -> Void) -> Void)?
+    var onPreviewSelect: ((DockApp, CGWindowID, String) -> Void)?
+    var previewGlassFrame: NSRect { convertToScreen(effect.convert(effect.bounds, to: nil)) }
     var onSelect: ((DockApp, Bool) -> Void)?
     var onPinHere: ((DockApp) -> Void)?
     var onPinEverywhere: ((DockApp) -> Void)?
@@ -58,7 +66,7 @@ final class DockPanel: NSPanel {
     /// `AppDelegate` so the per-desktop dock color override can be looked up. Re-tints
     /// the bar whenever it changes (e.g. on a Space switch).
     var spaceUUID: String? {
-        didSet { if spaceUUID != oldValue { applyDockTint() } }
+        didSet { if spaceUUID != oldValue { WindowHoverPreview.shared.close(for: self); applyDockTint() } }
     }
     private var apps: [DockApp] = []
     /// The current desktop's 1-based number, shown by the indicator badge. Set by
@@ -238,6 +246,7 @@ final class DockPanel: NSPanel {
     /// radius, spacing, orientation) and invalidate the rebuild cache so the next
     /// `update` picks up new icon sizes / dimming too.
     func applyAppearance() {
+        WindowHoverPreview.shared.close(for: self)
         resetMagnification()
         let prefs = Preferences.shared
         effect.dockMode = true
@@ -597,6 +606,7 @@ final class DockPanel: NSPanel {
         // tears down the one under the cursor mid-hover, restarting its magnify
         // animation. Only rebuild when the contents actually changed.
         guard apps != self.apps else { return }
+        WindowHoverPreview.shared.close(for: self)
         resetMagnification()
         let prefs = Preferences.shared
         // Consume the one-shot drop suppression (a just-dropped app brought its own
@@ -681,7 +691,14 @@ final class DockPanel: NSPanel {
             let button = DockButton()
             button.cell = DockItemCell()
             button.usesSharedMagnification = true
-            button.onPointerMoved = { [weak self] point in self?.handleMagnificationPointer(point) }
+            button.onPointerMoved = { [weak self, weak button] point in
+                guard let self, let button else { return }
+                self.handleMagnificationPointer(point)
+                WindowHoverPreview.shared.hover(app, button: button, dock: self)
+            }
+            button.onPointerLeft = { [weak self] in
+                if let self { WindowHoverPreview.shared.pointerMoved(for: self) }
+            }
             button.restingWidth = width
             button.isBordered = false
             // Own our layer from birth (the window is only *implicitly* layer-backed
@@ -717,6 +734,7 @@ final class DockPanel: NSPanel {
                 button.setWindowBadge(count: app.windowCount)
             }
             button.onActivate = { [weak self] app, forceNew in
+                if let self { WindowHoverPreview.shared.close(for: self) }
                 if app.isLauncher { self?.onOpenLauncher?() } else { self?.onSelect?(app, forceNew) }
             }
             button.onRightClick = { [weak self] in self?.showMenu(for: app, from: button) }
@@ -1039,6 +1057,7 @@ final class DockPanel: NSPanel {
     // MARK: - Drag-to-reorder
 
     private func beginReorder(_ button: DockButton) {
+        WindowHoverPreview.shared.close(for: self)
         resetMagnification()
         isReordering = true
         button.setLifted(true)
@@ -1085,7 +1104,7 @@ final class DockPanel: NSPanel {
     /// the first time, then slides that slot between icons as the cursor moves so
     /// the dragged app always has a place to land.
     private func updateDragSlot(at locationInWindow: NSPoint) {
-        if !isExternalDragging { resetMagnification() }
+        if !isExternalDragging { WindowHoverPreview.shared.close(for: self); resetMagnification() }
         isExternalDragging = true
         let target = slotIndex(forCursorAt: locationInWindow, ignoring: dragGap)
         if dragGap == nil { openDragGap(at: target); return }
@@ -1354,6 +1373,7 @@ final class DockPanel: NSPanel {
 
     /// 跨窗口鼠标事件补足 tracking area 丢失的退出；只收尾已有缩放，不触发进入。
     func endMagnificationIfPointerLeft(at screenPoint: NSPoint, deliveredElsewhere: Bool) {
+        guard !WindowHoverPreview.shared.keepsOpen(self) else { return }
         guard (!magnificationItems.isEmpty && magnificationTarget != 0) || pendingMagnificationPoint != nil else { return }
         guard !pointerHitsDock(at: screenPoint, checkOcclusion: deliveredElsewhere) else { return }
         updateMagnificationMouseAcceptance(at: screenPoint)
@@ -1643,6 +1663,7 @@ final class DockPanel: NSPanel {
                 if item.view.frame != rect { item.view.frame = rect }
             }
             stack.layoutSubtreeIfNeeded() // 所有项目一次性提交，不能逐个触发层级布局。
+            WindowHoverPreview.shared.reposition()
             if let probe = magnificationRenderProbe {
                 probe((beforeWindow - probeStart) * 1000, (beforeLayout - beforeWindow) * 1000,
                       (CACurrentMediaTime() - beforeLayout) * 1000)

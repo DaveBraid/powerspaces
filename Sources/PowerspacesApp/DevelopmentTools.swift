@@ -8,9 +8,74 @@ import SpaceKit
 enum DevelopmentTools {
     static let isAppearancePreview = CommandLine.arguments.contains("--preview-appearance")
     static let isGlassPreview = CommandLine.arguments.contains("--preview-glass")
-    static let isPreview = CommandLine.arguments.contains("--check-dock-performance") || isGlassPreview || isAppearancePreview || CommandLine.arguments.contains("--preview-settings") || CommandLine.arguments.contains("--check-dock-layout")
+    static let isPreview = CommandLine.arguments.contains("--check-preview-capture") || CommandLine.arguments.contains("--check-window-preview") || CommandLine.arguments.contains("--check-dock-performance") || isGlassPreview || isAppearancePreview || CommandLine.arguments.contains("--preview-settings") || CommandLine.arguments.contains("--check-dock-layout")
     static let previewDirectory = FileManager.default.temporaryDirectory
         .appendingPathComponent("powerspaces-preview-\(UUID().uuidString)")
+
+    /// 只允许指定的独立测试应用；正常启动正式签名进程验证捕获、最小化／隐藏恢复，不写图片。
+    @MainActor static func checkWindowPreviewCapture() {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        Task { @MainActor in
+            guard CGPreflightScreenCaptureAccess(), AccessibilityPermission.isTrusted,
+                  let fixture = NSRunningApplication.runningApplications(withBundleIdentifier: "local.ps.preview-validation").first else {
+                print("Preview live check: missing permission or controlled fixture"); exit(2)
+            }
+            let previous = NSWorkspace.shared.frontmostApplication
+            let provider = CGSSpaceProvider()
+            let launcher = Launcher(provider: provider, config: .defaults, warn: { print($0) })
+            let pid = fixture.processIdentifier
+            let displays = provider.displays()
+            guard let snapshot = try? provider.snapshot(),
+                  let display = displays.first(where: {
+                      !WindowPreview.windows(pid: pid, bundleID: fixture.bundleIdentifier, snapshot: snapshot,
+                          display: $0, allDisplays: displays.map(\.bounds)).isEmpty
+                  }),
+                  let windows = try? launcher.previewWindows(pid: pid, bundleID: fixture.bundleIdentifier,
+                      displayUUID: display.displayUUID, spaceUUID: display.currentSpaceUUID, includeHidden: true),
+                  windows.count == 2 else { print("Preview live check: fixture ownership unavailable"); exit(2) }
+            let foregroundBefore = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            let captured: Bool = await withCheckedContinuation { continuation in
+                var count = 0, images = 0, placeholders = 0
+                WindowThumbnailService.shared.capture(windows) { _, _, image, error in
+                    count += 1
+                    if let image {
+                        if image.size.width <= 440 && image.size.height <= 280 { images += 1 }
+                    } else if error == "Window is minimized or hidden" { placeholders += 1 }
+                    if count == windows.count {
+                        print("Preview capture: images=\(images) placeholders=\(placeholders) callbacks=\(count)")
+                        continuation.resume(returning: images == 1 && placeholders == 1)
+                    }
+                }
+            }
+            let noActivation = foregroundBefore == NSWorkspace.shared.frontmostApplication?.processIdentifier
+            var restored = false, exact = false, unhidden = false
+            if let minimized = windows.first(where: \.isMinimized) {
+                _ = try? launcher.focusPreviewWindow(windowID: minimized.windowID, pid: pid,
+                    target: AppTarget(bundleID: fixture.bundleIdentifier, name: "PSPreviewValidation"),
+                    displayUUID: display.displayUUID, spaceUUID: display.currentSpaceUUID)
+                try? await Task.sleep(for: .milliseconds(300))
+                restored = (try? provider.snapshot().windows.first { $0.windowID == minimized.windowID }?.isMinimized) == false
+                let rows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
+                let front = rows.first { ($0[kCGWindowOwnerPID as String] as? Int) == Int(pid)
+                    && ($0[kCGWindowLayer as String] as? Int) == 0 }
+                exact = (front?[kCGWindowNumber as String] as? UInt32) == minimized.windowID
+                fixture.hide()
+                try? await Task.sleep(for: .milliseconds(200))
+                _ = try? launcher.focusPreviewWindow(windowID: minimized.windowID, pid: pid,
+                    target: AppTarget(bundleID: fixture.bundleIdentifier, name: "PSPreviewValidation"),
+                    displayUUID: display.displayUUID, spaceUUID: display.currentSpaceUUID)
+                try? await Task.sleep(for: .milliseconds(300))
+                unhidden = !fixture.isHidden
+            }
+            WindowThumbnailService.shared.cancel()
+            fixture.terminate()
+            previous?.activate()
+            print("Preview live: noActivation=\(noActivation) restored=\(restored) exact=\(exact) unhidden=\(unhidden)")
+            exit(captured && noActivation && restored && exact && unhidden ? 0 : 1)
+        }
+        app.run()
+    }
 
     /// 真实图标与混合标题的独立性能窗口，只使用临时配置。
     @MainActor static func checkDockPerformance() {

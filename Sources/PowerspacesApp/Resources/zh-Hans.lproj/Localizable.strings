@@ -622,3 +622,18 @@
 "Allow Powerspaces in System Settings → Privacy & Security → Accessibility to read Dock notification badges and manage windows. If Powerspaces is missing, add /Applications/Powerspaces.app with the + button. If it is already enabled but shows Not granted here, switch it off and on again; use Reset Permission if that does not help." = "请在“系统设置 → 隐私与安全性 → 辅助功能”中启用 Powerspaces，以读取程序坞通知徽章并管理窗口。若列表中没有 Powerspaces，点击 + 添加 /Applications/Powerspaces.app。若开关已开启，但这里仍显示“未授权”，请关闭再开启；仍无效时可使用“重置权限”。";
 
 "Accessibility lets Powerspaces read window titles, focus, move, minimize and close windows, and read notification badges from the macOS Dock to display them in the Powerspaces dock." = "辅助功能权限用于读取窗口标题、聚焦、移动、最小化和关闭窗口，以及读取 macOS 程序坞中的通知徽章，并在 PS 程序坞中显示。";
+
+// 静态窗口预览与独立屏幕录制授权。
+"Window previews" = "窗口预览";
+"Screen Recording" = "屏幕录制";
+"Window previews use Screen Recording to capture window thumbnails once when opened. Images stay in memory, are released when closed, and are never saved or uploaded. Accessibility is separately required to focus a selected window. No Screen Recording permission is needed when previews are off." = "窗口预览使用屏幕录制权限，在每次展开时截取一次窗口缩略图。图片仅保存在内存中，关闭后释放，不保存、不上传。点击预览聚焦窗口另需辅助功能权限。关闭预览时无需屏幕录制权限。";
+"Enable Screen Recording for window previews" = "为窗口预览启用屏幕录制";
+"Allow Powerspaces in System Settings → Privacy & Security → Screen Recording. This permission is only used for static window previews. You may need to restart Powerspaces after granting it." = "请在系统设置 → 隐私与安全 → 屏幕录制中允许 Powerspaces。此权限仅用于静态窗口预览，授权后可能需要重新启动 Powerspaces。";
+"Window preview unavailable" = "无法获取窗口预览";
+"Window is minimized or hidden" = "窗口已最小化或隐藏，点击可恢复";
+"Enable Screen Recording in Settings → Effects for window previews." = "请在设置 → 效果中为窗口预览启用屏幕录制权限。";
+"Loading window previews…" = "正在加载窗口预览…";
+"No windows on this desktop" = "此桌面没有窗口";
+"needs Accessibility permission to focus this window." = "需要辅助功能权限才能聚焦此窗口。";
+"this window is no longer available on this desktop." = "此窗口已不在当前桌面或已关闭。";
+"could not focus this window." = "无法聚焦此窗口。";

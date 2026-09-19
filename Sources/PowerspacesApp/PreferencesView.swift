@@ -225,6 +225,7 @@ struct PreferencesView: View {
         .init(name: "Divider thickness", tab: 1, keywords: "separator width stroke"),
         .init(name: "Divider length", tab: 1, keywords: "separator size"),
         .init(name: "Divider side spacing", tab: 1, keywords: "separator gap"),
+        .init(name: "Window previews", tab: 2, keywords: "preview thumbnail screen recording 窗口预览 缩略图 屏幕录制 权限"),
         .init(name: "Enable magnification", tab: 2, keywords: "magnify scale zoom 缩放 放大 倍率"),
         .init(name: "Icon animation", tab: 2, keywords: "add remove poof slide fade"),
         .init(name: "Show an icon per window", tab: 3, keywords: "windows multiple"),
@@ -563,6 +564,16 @@ struct PreferencesView: View {
 
     private var effectsTab: some View {
         Form {
+            Section {
+                Toggle(L10n.string("Window previews"), isOn: bind(\.windowPreviewEnabled))
+                ScreenRecordingPermissionRow()
+            } header: {
+                Text(L10n.string("Window previews"))
+            } footer: {
+                Text(L10n.string("Window previews use Screen Recording to capture window thumbnails once when opened. Images stay in memory, are released when closed, and are never saved or uploaded. Accessibility is separately required to focus a selected window. No Screen Recording permission is needed when previews are off."))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             Section {
                 Toggle(L10n.string("Enable magnification"), isOn: bind(\.hoverEnabled))
                     .help(L10n.string("Magnify icons when the pointer is over the dock."))
@@ -1429,6 +1440,26 @@ private struct UninstallRow: View {
         case .alertSecondButtonReturn: Uninstaller.run(keepPreferences: true)
         case .alertThirdButtonReturn: Uninstaller.run(keepPreferences: false)
         default: break // Cancel, or the window was dismissed — do nothing.
+        }
+    }
+}
+
+/// 屏幕录制独立于辅助功能；关闭预览时不探测、不申请捕获权限。
+private struct ScreenRecordingPermissionRow: View {
+    @ObservedObject private var prefs = Preferences.shared
+    @ViewState private var granted = false
+    var body: some View {
+        if prefs.windowPreviewEnabled {
+            HStack {
+                Text(L10n.string("Screen Recording"))
+                Spacer()
+                Text(L10n.string(granted ? "Granted" : "Not granted")).foregroundStyle(.secondary)
+                Button(L10n.string("Enable / Manage Permission…")) { PreviewPermission.request() }
+            }
+            .onAppear { granted = CGPreflightScreenCaptureAccess() }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                granted = CGPreflightScreenCaptureAccess()
+            }
         }
     }
 }
