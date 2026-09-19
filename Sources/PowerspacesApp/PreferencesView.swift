@@ -241,6 +241,8 @@ struct PreferencesView: View {
         .init(name: "Warning banners", tab: 4, keywords: "hud notify"),
         .init(name: "New-window strategy", tab: 5, keywords: "launch open applescript"),
         .init(name: "Hide the macOS Dock", tab: 6, keywords: "apple dock"),
+        .init(name: "Avoid the dock when arranging windows", tab: 6,
+              keywords: "window layout arrange maximize zoom tile dock avoidance"),
         .init(name: "Raycast extension", tab: 6, keywords: "raycast cli spotlight"),
         .init(name: "Per-desktop ⌘-Tab (AltTab)", tab: 6, keywords: "alttab cmd tab switcher"),
         .init(name: "Menu-bar icon", tab: 6, keywords: "glyph status"),
