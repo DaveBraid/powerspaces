@@ -1260,13 +1260,19 @@ final class DockPanel: NSPanel {
     private var magnificationDuration: TimeInterval = 0
     nonisolated(unsafe) private var magnificationDisplayLink: CADisplayLink?
     private var pendingMagnificationPoint: NSPoint?
+    private var samplesMagnificationPointer = false // 真实输入会话才采样，不干扰固定几何预览。
+    private var lastMagnificationPointer: NSPoint?
+    private var lastMagnificationMotion: CFTimeInterval = 0
+    private let magnificationIdleDelay: CFTimeInterval = 0.250 // 停止移动后保留节拍 250ms。
+    private var magnificationPointerSource: () -> NSPoint = { NSEvent.mouseLocation }
+    private var magnificationClock: () -> CFTimeInterval = { CACurrentMediaTime() }
     private var magnificationRenderProbe: ((Double, Double, Double) -> Void)?
     private var lastMagnificationGeometry: (focus: CGFloat, progress: CGFloat)?
     private lazy var magnificationFrameDriver = DockMagnificationFrameDriver { [weak self] in
         self?.tickMagnification()
     }
 
-    /// 仅输入待处理或进出动画未完成时订阅所在显示器的刷新，不常驻空闲回调。
+    /// 移动及短暂静止期间保持同一显示节拍；空闲暂停后的新输入复用链接。
     private func startMagnificationDisplayLink() {
         if let link = magnificationDisplayLink { link.isPaused = false; return }
         let link = container.displayLink(target: magnificationFrameDriver,
@@ -1385,8 +1391,17 @@ final class DockPanel: NSPanel {
     /// 独立性能回归：一批高频输入只提交最后位置，离开会取消尚未渲染的输入。
     func checkMagnificationBurst() -> Bool {
         previewMagnification()
+        orderFrontRegardless()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05)) // 让窗口服务器提交位置后再检查真实遮挡命中。
         let origin = NSPoint(x: frame.midX, y: frame.midY)
         let before = magnificationFocus
+        var clock = CACurrentMediaTime()
+        magnificationClock = { clock }
+        magnificationPointerSource = { NSPoint(x: origin.x - 8, y: origin.y) }
+        defer {
+            magnificationClock = { CACurrentMediaTime() }
+            magnificationPointerSource = { NSEvent.mouseLocation }
+        }
         let started = CACurrentMediaTime()
         for index in 0..<480 {
             handleMagnificationPointer(NSPoint(x: origin.x + CGFloat(index % 25) - 12, y: origin.y))
@@ -1396,8 +1411,12 @@ final class DockPanel: NSPanel {
         tickMagnification()
         let totalTime = (CACurrentMediaTime() - started) * 1000
         let latest = abs(magnificationFocus - (origin.x - 8)) < 0.01
-        let paused = magnificationDisplayLink?.isPaused == true
+        let retained = magnificationDisplayLink?.isPaused == false
+        clock += 0.251
+        tickMagnification()
+        let paused = retained && magnificationDisplayLink?.isPaused == true
         resetMagnification()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         handleMagnificationPointer(NSPoint(x: frame.midX, y: frame.midY))
         let queued = pendingMagnificationPoint != nil
         endMagnificationIfPointerLeft(at: NSPoint(x: frame.maxX + 100, y: frame.maxY + 100),
@@ -1406,6 +1425,46 @@ final class DockPanel: NSPanel {
         let pass = deferred && latest && paused && queued && cancelled
         print("Magnification burst: 480 inputs \(inputTime) ms, including frame \(totalTime) ms; latest=\(latest) deferred=\(deferred) idle=\(paused) cancelled=\(queued && cancelled)")
         return pass
+    }
+
+    /// 走真实事件入口与 CADisplayLink；注入屏幕位置，验证无后续事件仍连续采样、停稳与恢复。
+    func checkMagnificationCadence() -> Bool {
+        resetMagnification()
+        guard let button = dockArrangedSubviews.compactMap({ $0 as? DockButton }).first else { return false }
+        let rect = convertToScreen(button.convert(button.bounds, to: nil))
+        let center = NSPoint(x: rect.midX, y: rect.midY)
+        let vertical = Preferences.shared.barPosition.isVertical
+        var moving = true, samples = 0, point = center
+        magnificationPointerSource = {
+            samples += 1
+            if moving {
+                point = NSPoint(x: center.x + (vertical ? 0 : CGFloat(samples % 5)),
+                                y: center.y + (vertical ? CGFloat(samples % 5) : 0))
+            }
+            return point
+        }
+        defer { magnificationPointerSource = { NSEvent.mouseLocation }; resetMagnification() }
+        handleMagnificationPointer(center) // 只发送一个进入输入，后续位置变化完全由帧内采样取得。
+        RunLoop.main.run(until: Date().addingTimeInterval(0.35))
+        let continuous = samples >= 5 && magnificationDisplayLink?.isPaused == false
+        let expected = vertical ? point.y : point.x
+        let latest = abs(magnificationFocus - expected) < 0.01
+        moving = false
+        RunLoop.main.run(until: Date().addingTimeInterval(0.32))
+        let paused = magnificationDisplayLink?.isPaused == true
+        let before = samples
+        RunLoop.main.run(until: Date().addingTimeInterval(0.06))
+        let idle = samples == before
+        moving = true
+        handleMagnificationPointer(point)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.08))
+        let resumed = samples > before && magnificationDisplayLink?.isPaused == false
+        moving = false
+        point = NSPoint(x: frame.maxX + 100, y: frame.maxY + 100)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        let exited = magnificationDisplayLink == nil && magnificationItems.isEmpty
+        print("Magnification cadence \(Preferences.shared.barPosition): continuous=\(continuous) latest=\(latest) paused=\(paused) idle=\(idle) resumed=\(resumed) exit=\(exited)")
+        return continuous && latest && paused && idle && resumed && exited
     }
 
     /// 独立显示刷新测量，真实绘制两秒；不把突发输入合并耗时当作帧率。
@@ -1475,7 +1534,11 @@ final class DockPanel: NSPanel {
         guard !isAnimating, !isReordering, !isExternalDragging, !isContextMenuOpen,
               hideState == .shown, Preferences.shared.hoverEnabled, Preferences.shared.hoverScale > 1,
               !SystemDisplay.reduceMotion else { return }
-        pendingMagnificationPoint = point // 同一帧重复事件只保留最新位置，不执行布局。
+        if !samplesMagnificationPointer || point != lastMagnificationPointer || magnificationDisplayLink?.isPaused == true {
+            lastMagnificationMotion = magnificationClock()
+        }
+        samplesMagnificationPointer = true
+        pendingMagnificationPoint = point // 事件只唤醒节拍；帧内再读取最新屏幕位置。
         startMagnificationDisplayLink()
     }
 
@@ -1546,7 +1609,7 @@ final class DockPanel: NSPanel {
         if target == 0, magnificationProgress == 0 { resetMagnification() }
     }
 
-    /// 过渡完成立即停表；菜单打开时冻结，避免改变菜单宿主窗口。
+    /// 移动期间每帧采样最新指针；静止 250ms 且过渡完成后暂停，退出动画完成则销毁。
     private func tickMagnification() {
         guard !isContextMenuOpen else {
             magnificationDisplayLink?.invalidate()
@@ -1558,6 +1621,19 @@ final class DockPanel: NSPanel {
             resetMagnification()
             return
         }
+        if samplesMagnificationPointer, magnificationTarget == 1 || pendingMagnificationPoint != nil {
+            let current = magnificationPointerSource()
+            if pointerHitsDock(at: current, checkOcclusion: true) {
+                if current != lastMagnificationPointer {
+                    lastMagnificationPointer = current
+                    lastMagnificationMotion = magnificationClock()
+                }
+                pendingMagnificationPoint = current // 采样优先于已排队的事件坐标；相同几何由布局缓存跳过。
+            } else {
+                pendingMagnificationPoint = nil // 不应用已离开图标的旧事件坐标。
+                endMagnificationIfPointerLeft(at: current, deliveredElsewhere: true)
+            }
+        }
         if let point = pendingMagnificationPoint {
             pendingMagnificationPoint = nil
             magnify(atScreenPoint: point, render: false)
@@ -1566,7 +1642,9 @@ final class DockPanel: NSPanel {
         applyMagnification()
         if magnificationProgress == 0, magnificationTarget == 0 { resetMagnification() }
         if pendingMagnificationPoint == nil, magnificationProgress == magnificationTarget {
-            magnificationDisplayLink?.isPaused = true // 稳态不回调；下一次输入复用，避免逐帧创建链接。
+            if !samplesMagnificationPointer || magnificationClock() - lastMagnificationMotion >= magnificationIdleDelay {
+                magnificationDisplayLink?.isPaused = true // 不能每处理一帧就暂停，否则下一次唤醒可能错过多个节拍。
+            }
         }
     }
 
@@ -1674,6 +1752,9 @@ final class DockPanel: NSPanel {
 
     /// 拖拽、重建及隐藏前恢复静止布局并停表，避免与它们争夺尺寸或窗口位置。
     func resetMagnification() {
+        samplesMagnificationPointer = false
+        lastMagnificationPointer = nil
+        lastMagnificationMotion = 0
         pendingMagnificationPoint = nil
         magnificationDisplayLink?.invalidate()
         magnificationDisplayLink = nil
