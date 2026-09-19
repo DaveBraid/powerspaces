@@ -194,7 +194,7 @@ Seven tabs, each with a Basic/Advanced toggle:
 
 - **Dock:** bar position, material, height, outline, auto-hide, per-desktop indicator, screens, color.
 - **Icons:** icon size/spacing and the running-app indicator (dim not-running, or box running).
-- **Effects:** hover magnify/highlight and the add/remove icon animation.
+- **Effects:** hover magnification and the add/remove icon animation.
 - **Windows:** one icon per window, live window titles, and the **App Launcher** tile (a Launchpad-style grid of every installed app, opened on the current desktop).
 - **Behavior:** click actions, close-to-quit, refresh interval, faster desktop switch, warning banner.
 - **New windows:** the default launch strategy for unknown apps (per-app rules live in each icon's right-click menu).
@@ -253,10 +253,12 @@ Running apps have a small dot; non-running pinned shortcuts remain dimmed. All v
 
 Running regular apps track desktop/display membership by window identity: moving a window replaces its old membership, while closing it retains its last desktop until the process exits. Other windows on the original desktop keep that desktop’s entry. PS stores membership in `app-desktop-ownership.json`, using desktop UUIDs and process start identity to restore still-running apps after PS restarts. An app first observed without any windows is assigned to the active desktop; unknown historical membership cannot be reconstructed on first upgrade. Merely switching desktops does not add an app to them. Unpinned owned apps appear after the divider; pins retain global running status. The explicit “quit on last window close” option still exits the app and therefore removes its running entry.
 
-Hover magnification now expands nearby icons continuously and makes room for them; the existing hover scale controls the maximum size (1.5× by default; saved values are preserved). Reduce Motion disables magnification. Title layout reserves explicit icon/text regions and shrinks short titles to their measured width, with the configured title width as a maximum. Very long window titles truncate with the full title available in the tooltip.
+Hover magnification uses the validated prototype’s sine boundary warp and cosine entry/exit transition: icon edges and gaps move together, while the glass keeps its resting thickness; the existing hover scale controls the maximum size (1.5× by default; saved values are preserved). The default animation-speed preset preserves the prototype’s size-dependent timing; other presets scale it proportionally, and Instant removes the transition. Timers run only during entry/exit. Dragging, menu dismissal, content changes and auto-hide restore resting geometry. Reduce Motion disables magnification. Title layout reserves explicit icon/text regions and shrinks short titles to their measured width, with the configured title width as a maximum. Very long window titles truncate with the full title available in the tooltip.
 
 In Icons settings, running-dot spacing is adjustable from 0–20 points (default 5). Dots keep their screen-edge coordinate during magnification and track the icon center along the dock. The pinned-app divider switches as a whole between black and white, stays centered across the glass, has adjustable length (20–100% of icon size, default 65%), can be disabled, and has independent extra spacing on each side (0–24 points, default 8).
 
 Divider thickness is adjustable in Settings → Icons from 0.5–4 pt (default 1 pt), independently of length and spacing.
 
 Enable **Advanced** in Settings to reveal glass transparency/tint strength and divider thickness/length/side spacing. Hiding these controls preserves their saved values.
+
+The Effects tab provides a basic **Enable magnification** switch; maximum scale (1–2×) is under **Advanced**. Hovering adds no container highlight; the running-state box appears only in **Box running** mode. Existing scale and enable preferences are preserved.

@@ -11,7 +11,7 @@ import SpaceKit
 extension DockPanel: NSMenuDelegate {
     /// 菜单跟踪期间冻结会移动或重建锚点的更新，关闭后由正常刷新恢复。
     func menuWillOpen(_ menu: NSMenu) { isContextMenuOpen = true }
-    func menuDidClose(_ menu: NSMenu) { isContextMenuOpen = false }
+    func menuDidClose(_ menu: NSMenu) { isContextMenuOpen = false; resetMagnification() }
 
 
     /// Pairs an app with a strategy for a context-menu item's representedObject.

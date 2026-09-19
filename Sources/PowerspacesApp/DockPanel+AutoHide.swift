@@ -22,6 +22,7 @@ extension DockPanel {
         if fullyHidden {
             cancelHideTimer()
             removeMouseMonitor()
+            resetMagnification()
             if isVisible { orderOut(nil) }
             return
         }
@@ -116,6 +117,7 @@ extension DockPanel {
         // Pointer still over the bar / hot edge: don't hide, and don't re-arm — the
         // move that takes the pointer away will start a fresh countdown.
         if pointerIsOverBar() { cancelHideTimer(); return }
+        resetMagnification()
         hideState = .hidden
         applyHideGeometry(duration: Preferences.shared.autoHideSpeed) { [weak self] in
             // Animation completion fires on the main actor.
@@ -220,8 +222,9 @@ extension DockPanel {
         if pointerInRevealBand() { return true }
         guard let screen = boundScreen else { return false }
         let f = screen.frame
-        var keep = NSRect(origin: origin(forSize: frame.size, on: screen), size: frame.size)
-            .insetBy(dx: -2, dy: -2)
+        // 正弦变形会非对称推开边界；显示期间必须使用真实窗口位置。
+        let shown = hideState == .shown ? frame : NSRect(origin: origin(forSize: frame.size, on: screen), size: frame.size)
+        var keep = shown.insetBy(dx: -2, dy: -2)
         // Stretch the bar's frame out to the screen edge it hugs, folding the
         // edge-gap into the keep region.
         switch Preferences.shared.barPosition {

@@ -63,6 +63,11 @@ final class GlassSurfaceView: NSView {
         surface.frame = bounds
         nativeDockSurface?.frame = bounds
         if hostsContent { glassContent.frame = bounds }
+        if dockMode {
+            // AppKit 在图层重建时可能恢复裁切；仅背景有圆角，放大前景必须能越过玻璃边界。
+            clipsToBounds = false
+            layer?.masksToBounds = false
+        }
     }
 
     /// 旧系统的染色位于材质之上、前景之下，降低透明度也不能遮住图标。

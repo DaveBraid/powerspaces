@@ -143,6 +143,31 @@ h.test("moving windows replaces ownership while closing retains it") {
     h.ok(owner.contains(10, scope: "D"), "explicit multi-space windows retain all memberships")
 }
 
+h.test("native magnification boundary mapping and cosine transition") {
+    var valid = true
+    for base: CGFloat in [24, 48, 72] {
+        for ratio: CGFloat in [1, 1.5, 2, 2.5] {
+            for progress: CGFloat in [0, 0.25, 0.5, 1] {
+                let warp = DockMagnification(base: base, maximum: base * ratio, progress: progress, focus: 0)
+                valid = valid && abs(warp.map(base / 2) - warp.map(-base / 2)
+                    - (base + (base * ratio - base) * progress)) < 0.00001
+                var previous = -CGFloat.infinity
+                for i in -500...500 {
+                    let x = CGFloat(i), mapped = warp.map(CGFloat(i))
+                    valid = valid && mapped > previous && abs(mapped + warp.map(-x)) < 0.00001
+                    if progress == 0 { valid = valid && abs(mapped - x) < 0.00001 }
+                    previous = mapped
+                }
+            }
+        }
+    }
+    h.ok(valid, "48 combinations preserve peak, monotonicity, symmetry and identity")
+    h.eq(DockMagnification.interpolate(from: 0.2, to: 1, fraction: 0), 0.2)
+    h.eq(DockMagnification.interpolate(from: 0.2, to: 1, fraction: 1), 1)
+    h.ok(abs(DockMagnification.interpolate(from: 1, to: 0, fraction: 0.5) - 0.5) < 0.00001)
+    h.ok(DockMagnification.duration(sizeDifference: 48) > DockMagnification.duration(sizeDifference: 12))
+}
+
 // MARK: - Helpers
 
 func win(_ id: CGWindowID, _ pid: pid_t = 100, name: String = "App",

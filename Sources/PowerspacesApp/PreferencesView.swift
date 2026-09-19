@@ -225,7 +225,7 @@ struct PreferencesView: View {
         .init(name: "Divider thickness", tab: 1, keywords: "separator width stroke"),
         .init(name: "Divider length", tab: 1, keywords: "separator size"),
         .init(name: "Divider side spacing", tab: 1, keywords: "separator gap"),
-        .init(name: "Hover effect", tab: 2, keywords: "magnify highlight"),
+        .init(name: "Enable magnification", tab: 2, keywords: "magnify scale zoom 缩放 放大 倍率"),
         .init(name: "Icon animation", tab: 2, keywords: "add remove poof slide fade"),
         .init(name: "Show an icon per window", tab: 3, keywords: "windows multiple"),
         .init(name: "Show window titles", tab: 3, keywords: "label taskbar title"),
@@ -564,18 +564,14 @@ struct PreferencesView: View {
     private var effectsTab: some View {
         Form {
             Section {
-                Toggle(L10n.string("Enable hover effect"), isOn: bind(\.hoverEnabled))
-                    .help(L10n.string("Master switch for the magnify + highlight when you point at an icon."))
+                Toggle(L10n.string("Enable magnification"), isOn: bind(\.hoverEnabled))
+                    .help(L10n.string("Magnify icons when the pointer is over the dock."))
                 if advanced {
                     NumericRow(title: L10n.string("Magnification"), help: L10n.string("How much an icon grows on hover (1.0× = no growth)."),
                                spec: Preferences.hoverScaleSpec,
                                value: bind(\.hoverScale), isCustom: bind(\.hoverScaleCustom))
                         .disabled(!prefs.hoverEnabled)
-                    NumericRow(title: L10n.string("Highlight"), help: L10n.string("Opacity of the highlight behind a hovered icon."),
-                               spec: Preferences.hoverHighlightSpec,
-                               value: bind(\.hoverHighlight), isCustom: bind(\.hoverHighlightCustom))
-                        .disabled(!prefs.hoverEnabled)
-                    NumericRow(title: L10n.string("Animation speed"), help: L10n.string("How long the hover magnify/highlight takes."),
+                    NumericRow(title: L10n.string("Animation speed"), help: L10n.string("Scales the native magnification timing relative to 0.12s."),
                                spec: Preferences.hoverAnimationSpec,
                                value: bind(\.hoverAnimation), isCustom: bind(\.hoverAnimationCustom))
                         .disabled(!prefs.hoverEnabled)
@@ -583,7 +579,7 @@ struct PreferencesView: View {
             } header: {
                 Text(L10n.string("Hover"))
             } footer: {
-                Text(L10n.string("The magnify + highlight when you point at an icon. Off disables it entirely."))
+                Text(L10n.string("Turn magnification on or off here. Enable Advanced to adjust its maximum scale."))
             }
             Section {
                 Toggle(L10n.string("Animate when an app is added"), isOn: bind(\.animateOnAdd))

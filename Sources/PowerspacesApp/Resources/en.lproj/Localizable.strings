@@ -604,3 +604,13 @@
 "Divider length" = "Divider length";
 
 "Divider thickness" = "Divider thickness";
+
+"Highlight duration; scales the native magnification timing relative to 0.12s." = "Highlight duration; scales the native magnification timing relative to 0.12s.";
+
+"Enable magnification" = "Enable magnification";
+
+"Magnify icons when the pointer is over the dock." = "Magnify icons when the pointer is over the dock.";
+
+"Scales the native magnification timing relative to 0.12s." = "Scales the native magnification timing relative to 0.12s.";
+
+"Turn magnification on or off here. Enable Advanced to adjust its maximum scale." = "Turn magnification on or off here. Enable Advanced to adjust its maximum scale.";

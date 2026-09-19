@@ -27,7 +27,7 @@ final class DockDropView: NSView {
     var onPointerMoved: ((NSPoint?) -> Void)?
     private var pointerTracking: NSTrackingArea?
 
-    /// 由鼠标事件驱动整条程序坞缩放，无计时器；离开时恢复尺寸。
+    /// 鼠标移动驱动整条程序坞几何；进出过渡由面板短时动画处理。
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let pointerTracking { removeTrackingArea(pointerTracking) }

@@ -211,7 +211,7 @@ final class DockButton: NSButton {
             layer?.transform = CATransform3DIdentity
             return
         }
-        let alpha = CGFloat(prefs.hoverHighlight)
+        // 容器框仅由运行状态的框选层绘制，悬停只改变缩放。
         // Honor Reduce Motion: keep the (static) highlight, but skip the magnify and
         // apply it instantly so there's no animated scaling.
         let reduce = SystemDisplay.reduceMotion
@@ -219,7 +219,7 @@ final class DockButton: NSButton {
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = reduce ? 0 : prefs.hoverAnimation
             ctx.allowsImplicitAnimation = true
-            layer?.backgroundColor = on ? NSColor.white.withAlphaComponent(alpha).cgColor : NSColor.clear.cgColor
+            layer?.backgroundColor = NSColor.clear.cgColor
             layer?.transform = on ? edgeAnchoredScale(scale) : CATransform3DIdentity
         }
     }

@@ -67,6 +67,7 @@ enum DevelopmentTools {
             }
             let before = centers()
             let widths = items.map { $0.widthConstraint?.constant ?? 0 }
+            let restingFrames = items.map { panel.convertToScreen($0.convert($0.bounds, to: nil)) }
             panel.previewMagnification()
             panel.contentView?.layoutSubtreeIfNeeded()
             let after = centers()
@@ -85,9 +86,27 @@ enum DevelopmentTools {
                 let actualThickness = position.isVertical ? mark.height : mark.width
                 centered = abs(actualThickness - prefs.dockDividerThickness) < 0.01 && abs(position.isVertical ? mark.midX - surface.midX : mark.midY - surface.midY) < 0.5
             } else { centered = false }
-            let pass = before.count == 2 && after.count == 2 && fixed && grew && centered
+            let focusFrame = restingFrames[items.count / 2]
+            let warp = DockMagnification(base: CGFloat(prefs.iconSize),
+                maximum: CGFloat(prefs.iconSize * prefs.hoverScale), progress: 1,
+                focus: position.isVertical ? focusFrame.midY : focusFrame.midX)
+            let geometryOK = zip(items, restingFrames).allSatisfy { button, resting in
+                let current = panel.convertToScreen(button.convert(button.bounds, to: nil))
+                let actualLow = position.isVertical ? current.minY : current.minX
+                let actualHigh = position.isVertical ? current.maxY : current.maxX
+                let expectedLow = warp.map(position.isVertical ? resting.minY : resting.minX)
+                let expectedHigh = warp.map(position.isVertical ? resting.maxY : resting.maxX)
+                return abs(actualLow - expectedLow) < 1 && abs(actualHigh - expectedHigh) < 1
+            }
+            panel.resetMagnification()
+            let restored = zip(items, widths).allSatisfy { abs(($0.widthConstraint?.constant ?? 0) - $1) < 0.01 }
+            let unclipped = glass?.clipsToBounds == false && glass?.layer?.masksToBounds == false
+            let pass = before.count == 2 && after.count == 2 && fixed && grew && centered && geometryOK && restored && unclipped
             if !pass { failures += 1 }
             print("Dock anchors \(position): \(pass ? "PASS" : "FAIL") \(before) -> \(after)")
+            prefs.hoverAnimation = 0.12
+            if !panel.checkMagnificationInteractions() { failures += 1 }
+            prefs.hoverAnimation = 0
             panel.close()
         }
         print("Dock layout: \(failures) failures")
@@ -406,7 +425,7 @@ final class SettingsPreviewDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard DevelopmentTools.isAppearancePreview, let screen = NSScreen.main else { return }
         if CommandLine.arguments.contains("--dock-only") {
-            Preferences.shared.showWindowLabels = true
+            Preferences.shared.showWindowLabels = !CommandLine.arguments.contains("--icons-only")
             Preferences.shared.windowLabelScope = .all
             Preferences.shared.hoverScale = 1.5
         }

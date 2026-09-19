@@ -604,3 +604,13 @@
 "Divider length" = "分割线长度";
 
 "Divider thickness" = "分割线粗细";
+
+"Highlight duration; scales the native magnification timing relative to 0.12s." = "高亮过渡时长；缩放以 0.12 秒为基准，按比例调整原生算法时长。";
+
+"Enable magnification" = "启用缩放";
+
+"Magnify icons when the pointer is over the dock." = "鼠标移到程序坞上时放大图标。";
+
+"Scales the native magnification timing relative to 0.12s." = "以 0.12 秒为基准，按比例调整原生缩放算法时长。";
+
+"Turn magnification on or off here. Enable Advanced to adjust its maximum scale." = "在此开启或关闭缩放；开启“高级”可调节最大放大倍率。";
