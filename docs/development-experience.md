@@ -433,3 +433,5 @@ nm -u /System/Library/CoreServices/Dock.app/Contents/MacOS/Dock | grep -i space
 
 **仍属私有接口**：本机 macOS 27.0 (26A428) 验证通过，不保证未来版本；所有调用点都带降级路径，不宣称长期兼容。
 
+界面上该策略标注为「搬到本桌面（实验性）」，页脚说明它依赖未公开的系统接口、可能在未来的 macOS 版本失效；中英两份资源同步维护（`--check-localization` 会核对键的一致性——本轮就抓到过一次中英页脚 key 不一致，靠它才发现）。
+

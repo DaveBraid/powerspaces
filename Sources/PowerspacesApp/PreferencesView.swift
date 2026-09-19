@@ -974,6 +974,7 @@ struct PreferencesView: View {
                             set: { _ = strategies.setStrategy($0, forBundleID: app.bundleID, name: app.name) }
                         )) {
                             Text(L10n.string("Show a warning")).tag(StrategyKind.warn)
+                            Text(StrategyKind.moveHere.pickerLabel).tag(StrategyKind.moveHere)
                             Text(L10n.string("Quit there and reopen here")).tag(StrategyKind.quitReopen)
                         }
                         .help(L10n.format("What to do when %@ is already open on another desktop.", L10n.string(app.name)))
@@ -983,9 +984,12 @@ struct PreferencesView: View {
                 } footer: {
                     Text(L10n.string(
                         "These apps can't be given a second window on the desktop you're on because "
-                        + "macOS doesn't allow it. Default is to show a warning. “Quit there and reopen"
-                        + " here” quits the app and relaunches it here, which works but loses anything "
-                        + "unsaved or playing."))
+                        + "macOS doesn't allow it. Default is to show a warning. “Move it to this "
+                        + "desktop” brings the app's existing windows over to the desktop you're on "
+                        + "(its windows follow, nothing is quit). It's marked experimental because it "
+                        + "uses an undocumented system interface, so it may stop working on a future "
+                        + "macOS version. “Quit there and reopen here” quits the app and relaunches it "
+                        + "here, which works but loses anything unsaved or playing."))
                 }
             }
         }

@@ -456,7 +456,7 @@
 "The glyph shown in the menu bar. Invisible keeps a blank but clickable item; Hidden removes the item entirely." = "菜单栏图标的样式。“不可见”保留可点击的空白项；“隐藏”完全移除该项。";
 "The magnify + highlight when you point at an icon. Off disables it entirely." = "指针悬停在图标上时的放大与高亮效果。关闭后完全禁用。";
 "The “⚠︎ already open on another desktop” banner. Off hides it entirely." = "应用已在其他桌面打开时的 ⚠︎ 提示横幅。关闭后不再显示。";
-"These apps can't be given a second window on the desktop you're on because macOS doesn't allow it. Default is to show a warning. “Quit there and reopen here” quits the app and relaunches it here, which works but loses anything unsaved or playing." = "这些应用无法可靠地在当前桌面新建第二个窗口，默认显示警告。“在原桌面退出，在这里重新打开”会退出整个应用并在这里重启，未保存的内容或正在播放的状态可能丢失。";
+"These apps can't be given a second window on the desktop you're on because macOS doesn't allow it. Default is to show a warning. “Move it to this desktop” brings the app's existing windows over to the desktop you're on (its windows follow, nothing is quit). It's marked experimental because it uses an undocumented system interface, so it may stop working on a future macOS version. “Quit there and reopen here” quits the app and relaunches it here, which works but loses anything unsaved or playing." = "这些应用无法在你所在的桌面打开第二个窗口，因为 macOS 不允许。默认显示警告。「搬到本桌面」会把该应用已有的窗口搬到你现在所在的桌面（窗口跟着过来，不会退出应用）。它标注为实验性：底层使用未公开的系统接口，可能在未来的 macOS 版本上失效。「退出后在本桌面重开」会退出应用并在此重开，可用但会丢失未保存或正在播放的内容。";
 "Thick (3)" = "粗 （3）";
 "Thickness of a border drawn around the whole bar, in points (None leaves the bar borderless). Separate from the running-app box." = "整个程序坞的边框宽度，单位为点。选择“无”则不绘制边框；此设置独立于运行中应用的边框。";
 "Thickness of the running-app outline, in points." = "运行状态边框的宽度，单位为点。";
@@ -666,3 +666,6 @@
 
 // 单实例应用在其他桌面时的「搬到本桌面」策略。
 "Move it to this desktop" = "搬到本桌面";
+
+// 「搬到本桌面」依赖未公开接口，界面上标注为实验性。
+"Move it to this desktop (experimental)" = "搬到本桌面（实验性）";

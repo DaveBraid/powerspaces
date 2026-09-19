@@ -456,7 +456,7 @@
 "The glyph shown in the menu bar. Invisible keeps a blank but clickable item; Hidden removes the item entirely." = "The glyph shown in the menu bar. Invisible keeps a blank but clickable item; Hidden removes the item entirely.";
 "The magnify + highlight when you point at an icon. Off disables it entirely." = "The magnify + highlight when you point at an icon. Off disables it entirely.";
 "The “⚠︎ already open on another desktop” banner. Off hides it entirely." = "The “⚠︎ already open on another desktop” banner. Off hides it entirely.";
-"These apps can't be given a second window on the desktop you're on because macOS doesn't allow it. Default is to show a warning. “Quit there and reopen here” quits the app and relaunches it here, which works but loses anything unsaved or playing." = "These apps can't be given a second window on the desktop you're on because macOS doesn't allow it. Default is to show a warning. “Quit there and reopen here” quits the app and relaunches it here, which works but loses anything unsaved or playing.";
+"These apps can't be given a second window on the desktop you're on because macOS doesn't allow it. Default is to show a warning. “Move it to this desktop” brings the app's existing windows over to the desktop you're on (its windows follow, nothing is quit). It's marked experimental because it uses an undocumented system interface, so it may stop working on a future macOS version. “Quit there and reopen here” quits the app and relaunches it here, which works but loses anything unsaved or playing." = "These apps can't be given a second window on the desktop you're on because macOS doesn't allow it. Default is to show a warning. “Move it to this desktop” brings the app's existing windows over to the desktop you're on (its windows follow, nothing is quit). It's marked experimental because it uses an undocumented system interface, so it may stop working on a future macOS version. “Quit there and reopen here” quits the app and relaunches it here, which works but loses anything unsaved or playing.";
 "Thick (3)" = "Thick (3)";
 "Thickness of a border drawn around the whole bar, in points (None leaves the bar borderless). Separate from the running-app box." = "Thickness of a border drawn around the whole bar, in points (None leaves the bar borderless). Separate from the running-app box.";
 "Thickness of the running-app outline, in points." = "Thickness of the running-app outline, in points.";
@@ -666,3 +666,6 @@
 
 // 单实例应用在其他桌面时的「搬到本桌面」策略。
 "Move it to this desktop" = "Move it to this desktop";
+
+// 「搬到本桌面」依赖未公开接口，界面上标注为实验性。
+"Move it to this desktop (experimental)" = "Move it to this desktop (experimental)";

@@ -21,6 +21,14 @@ extension StrategyKind {
         case .moveHere: return L10n.string("Move it to this desktop")
         }
     }
+
+    /// 设置界面用的标签。`.moveHere` 依赖未公开的系统接口，因此标注为实验性，
+    /// 让用户在勾选前就知道它可能在其它 macOS 版本上失效。
+    var pickerLabel: String {
+        self == .moveHere
+            ? L10n.string("Move it to this desktop (experimental)")
+            : label
+    }
 }
 
 /// One known single-window app macOS can't reliably give a second window.
