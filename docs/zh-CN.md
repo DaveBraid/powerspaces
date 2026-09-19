@@ -128,3 +128,5 @@ open /Applications/Powerspaces.app
 “设置 → 图标 → 分割线粗细”可调 0.5–4 点，默认 1 点；与长度和两侧间距独立。
 
 开启设置中的“高级”后显示玻璃透光率、着色强度及分割线粗细、长度、两侧留白；关闭“高级”仅隐藏控件，保留已保存的效果。
+
+通知徽章诊断：通过已授权的 PS 应用启动参数 --check-system-badges 记录 AXURL／AXStatusLabel 和通知注册返回值；--observe-system-badges 限时观察 30 秒，记录实际通知回调及徽章采样，日志位于 /tmp/ps-dock-badge-study/diagnostic.log。注册成功不能替代徽章变化回调验证。外观预览追加 --badges 可显示固定通知文字与独立窗口数，不读取真实通知。

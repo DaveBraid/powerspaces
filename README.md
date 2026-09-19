@@ -262,3 +262,7 @@ Divider thickness is adjustable in Settings → Icons from 0.5–4 pt (default 1
 Enable **Advanced** in Settings to reveal glass transparency/tint strength and divider thickness/length/side spacing. Hiding these controls preserves their saved values.
 
 The Effects tab provides a basic **Enable magnification** switch; maximum scale (1–2×) is under **Advanced**. Hovering adds no container highlight; the running-state box appears only in **Box running** mode. Existing scale and enable preferences are preserved.
+
+Notification badges mirror the system Dock's AXStatusLabel, using application URLs and bundle identifiers rather than display names. Raw numbers, “99+” and text are preserved. Red notification badges sit at the icon’s upper right; the separate blue-gray window count sits at the lower right. Notification state is application-wide and appears only on the app entries already allowed by PS’s desktop rules.
+
+Accessibility permission is required. Unreadable status retains the last known value; an explicit empty status clears it. AX change notifications are attempted, with background fallback reads at 5–30 second intervals and failure backoff up to 60 seconds; polling pauses during sleep. Consequently changes may lag behind the native Dock, and applications absent from its accessible list have no badge source. No usernoted subscription or Dock injection is used.

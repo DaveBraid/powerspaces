@@ -72,3 +72,6 @@
 - 后续刷新路径排查（同一构建）：公开显示配置事务提交原有显示器坐标，返回成功但提前运行的 AppKit 观察进程仍保留旧工作区；未改变分辨率／排列，实验后独立回读恢复 79 点。日志为 `noop.log`、`observer-noop.log`。事务作用域参见 [Apple CGConfigureOption](https://developer.apple.com/documentation/coregraphics/cgconfigureoption)，不能靠成功返回判断缓存已刷新。
 - `SLSSpaceSetEdgeReservation` 的 WindowServer fallback `_XSpaceSetEdgeReservation` 仅在空间是自身所属平铺管理对象且其类型为 4 时更新预留，否则也返回 0；本机普通桌面只读类型为 0。此入口不是已验证的普通桌面通用预留接口；现代 bridged 路径尚未证明可用于普通桌面，不调用未知参数污染用户空间。
 - 系统 Dock 在传统矩形广播后还向 `WindowManager.ExposeCoordinator.setDockInfo` 传递显示器、当前／最大 inset 和方向；该路线经 `AdminXPCConnection.xpcSetDockInfo`，`AdminXPCListener` 在接受连接前检查 `com.apple.private.windowmanager` entitlement。只读反汇编确认该检查，没有尝试伪造签名或取得该权限；不能把此入口当作第三方可用替代通知。
+
+- 通知徽章缓存必须区分读取失败与明确空字符串：失败保留旧值，完整列表成功后才清理消失项；同 bundle 的多个源若冲突则保持未知，禁止按显示名称或窗口数量生成通知数。覆盖层用 NSButtonCell.imageRect 定位，避免标题宽度改变徽章位置；红色通知与蓝灰窗口数上下分离。
+- 当前徽章实机验证阻塞于辅助功能授权：命令行原型及原安装路径的 PS 只读诊断均报告 AXIsProcessTrusted=false，AX 读取返回 -25211；已验证缓存和静态徽章布局，尚未验证系统 Dock AXStatusLabel 的实际内容、变化通知、隐藏／重启和应用退出。启用并确认授权后必须继续实测，不能把静态预览当成来源验证。

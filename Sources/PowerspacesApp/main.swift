@@ -5,6 +5,13 @@
 import AppKit
 
 // 本地化验证和预览均在正式启动前分流，不注册桌面监听或改写系统偏好。
+if CommandLine.arguments.contains("--check-system-badges") || CommandLine.arguments.contains("--observe-system-badges") {
+    let app = NSApplication.shared
+    app.setActivationPolicy(.accessory)
+    DispatchQueue.main.async { DockBadgeReader.diagnose() }
+    app.run()
+    exit(0)
+}
 if CommandLine.arguments.contains("--check-native-dock") {
     exit(DevelopmentTools.checkNativeDockMaterial() ? 0 : 1)
 }

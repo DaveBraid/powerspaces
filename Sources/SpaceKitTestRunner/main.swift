@@ -54,6 +54,23 @@ final class Harness {
 
 let h = Harness()
 
+h.test("notification badges preserve text and distinguish failure from empty") {
+    var cache = NotificationBadgeCache()
+    h.ok(cache.merge(["app": .value("99+"), "text": .value("工作")], complete: true))
+    h.eq(cache.labels["app"], "99+")
+    h.eq(cache.labels["text"], "工作")
+    h.ok(!cache.merge(nil, complete: false), "permission/read failure keeps last known labels")
+    h.ok(!cache.merge(["app": .unavailable], complete: false), "partial failure cannot remove other apps")
+    h.eq(cache.labels["app"], "99+")
+    h.ok(cache.merge(["app": .value("")], complete: false), "explicit empty clears only this app")
+    h.eq(cache.labels["app"], nil)
+    h.eq(cache.labels["text"], "工作")
+    h.ok(cache.merge([:], complete: true), "complete disappearance clears exited app")
+    h.ok(cache.labels.isEmpty)
+    cache.merge(["app": .value("0")], complete: true)
+    h.eq(cache.labels["app"], "0", "never parse badge text as a numeric count")
+}
+
 h.test("windowless ownership survives switches and clears exited processes") {
     var owner = WindowlessOwnership()
     owner.update(livePIDs: [10, 20], pidsWithWindows: [10],

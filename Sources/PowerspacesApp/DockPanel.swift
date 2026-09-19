@@ -124,6 +124,7 @@ final class DockPanel: NSPanel {
     /// The display this dock is bound to (its `CGDirectDisplayID`). All positioning
     /// and pointer-tracking is relative to this screen, so several docks — one per
     /// display — don't fight over `NSScreen.main`.
+    nonisolated(unsafe) private var badgeObserver: NSObjectProtocol?
     let boundDisplayID: CGDirectDisplayID
 
     /// The live `NSScreen` for `boundDisplayID`, re-resolved each use so it survives
@@ -143,6 +144,15 @@ final class DockPanel: NSPanel {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 120, height: 64),
                    styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
+        badgeObserver = NotificationCenter.default.addObserver(forName: .dockNotificationBadgesChanged,
+                                                               object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                for case let button as DockButton in self.stack.arrangedSubviews {
+                    button.setNotificationBadge(NotificationBadgeStore.shared.label(for: button.app?.bundleID))
+                }
+            }
+        }
         isFloatingPanel = true
         level = .floating
         collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
@@ -664,6 +674,7 @@ final class DockPanel: NSPanel {
                                      highlightColor: prefs.boxHighlightColor)
             }
             button.app = app
+            button.setNotificationBadge(NotificationBadgeStore.shared.label(for: app.bundleID))
             button.setAccessibilityLabel(app.isLauncher ? L10n.string("App Launcher") : app.name)
             button.slotKey = slotKey
             if labeled { applyLabel(to: button, app: app, side: side) }
@@ -1507,6 +1518,7 @@ final class DockPanel: NSPanel {
     static let revealThreshold: CGFloat = 3
 
     deinit {
+        if let badgeObserver { NotificationCenter.default.removeObserver(badgeObserver) }
         magnificationTimer?.invalidate()
         removeMouseMonitor()
         cancelHideTimer()

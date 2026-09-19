@@ -5,12 +5,6 @@
 import AppKit
 import SpaceKit
 
-/// A non-interactive overlay (the window-count badge) that never claims a click, so
-/// clicking it still activates the dock icon beneath.
-private final class PassthroughBadgeView: NSView {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-}
-
 /// A dock icon button: reports right-clicks, shows a hover effect, and turns a
 /// long-press into a left/right drag so the user can reorder the dock.
 /// 标题与图标使用明确分区，避免 NSButtonCell 根据原始大图尺寸挤掉文字。
@@ -376,6 +370,8 @@ final class DockButton: NSButton {
         let size: CGFloat = 4 // 圆点直径固定，不参与图标放大。
         let gap = CGFloat(Preferences.shared.runningDotGap)
         let imageRect = cell?.imageRect(forBounds: bounds) ?? bounds
+        windowBadge?.place(relativeTo: imageRect, flipped: isFlipped)
+        notificationBadge?.place(relativeTo: imageRect, flipped: isFlipped)
         switch Preferences.shared.barPosition {
         case .bottom:
             runningDot?.frame = NSRect(x: imageRect.midX - size / 2,
@@ -393,51 +389,40 @@ final class DockButton: NSButton {
         }
     }
 
-    // MARK: - Window-count badge
+    // MARK: - 应用通知与桌面窗口数各自独立
 
-    private var badgeView: NSView?
-    private var badgeLabel: NSTextField?
+    private var windowBadge: DockBadgeView?
+    private var notificationBadge: DockBadgeView?
 
-    /// Show a small count badge at the icon's top-right when an app has several
-    /// windows on this desktop (count ≤ 1 removes it), so the user sees there's more
-    /// than one without expanding the app into an icon per window. The badge is
-    /// non-interactive, so clicking it still activates the icon beneath.
+    /// 窗口数保留原有语义，移到图标右下，避免与右上通知徽章冲突。
     func setWindowBadge(count: Int) {
-        guard count > 1 else {
-            badgeView?.removeFromSuperview(); badgeView = nil; badgeLabel = nil; return
+        windowBadge?.removeFromSuperview()
+        windowBadge = nil
+        guard count > 1 else { return }
+        let badge = DockBadgeView()
+        badge.notification = false
+        badge.text = String(count)
+        badge.setAccessibilityElement(false)
+        addSubview(badge)
+        windowBadge = badge
+        needsLayout = true
+    }
+
+    /// 空值移除，其他文本原样保留；只更新覆盖层，不重建按钮或中断交互。
+    func setNotificationBadge(_ text: String?) {
+        guard let text, !text.isEmpty else {
+            notificationBadge?.removeFromSuperview()
+            notificationBadge = nil
+            return
         }
-        wantsLayer = true
-        layer?.masksToBounds = false
-        if badgeView == nil {
-            let v = PassthroughBadgeView()
-            v.wantsLayer = true
-            v.layer?.cornerRadius = 8
-            v.layer?.masksToBounds = true
-            v.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
-            v.layer?.borderWidth = 1.5
-            v.layer?.borderColor = NSColor.windowBackgroundColor.cgColor
-            v.translatesAutoresizingMaskIntoConstraints = false
-            let l = NSTextField(labelWithString: "")
-            l.font = .systemFont(ofSize: 10, weight: .bold)
-            l.textColor = .white
-            l.alignment = .center
-            l.translatesAutoresizingMaskIntoConstraints = false
-            v.addSubview(l)
-            addSubview(v)
-            NSLayoutConstraint.activate([
-                v.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 3),
-                v.topAnchor.constraint(equalTo: topAnchor, constant: -3),
-                v.heightAnchor.constraint(equalToConstant: 16),
-                v.widthAnchor.constraint(greaterThanOrEqualToConstant: 16),
-                l.centerXAnchor.constraint(equalTo: v.centerXAnchor),
-                l.centerYAnchor.constraint(equalTo: v.centerYAnchor),
-                l.leadingAnchor.constraint(greaterThanOrEqualTo: v.leadingAnchor, constant: 3),
-                l.trailingAnchor.constraint(lessThanOrEqualTo: v.trailingAnchor, constant: -3),
-            ])
-            badgeView = v
-            badgeLabel = l
+        if notificationBadge == nil {
+            let badge = DockBadgeView()
+            badge.setAccessibilityElement(false)
+            addSubview(badge)
+            notificationBadge = badge
         }
-        badgeLabel?.stringValue = "\(count)"
+        notificationBadge?.text = text
+        needsLayout = true
     }
 
     private func updateBoxLayer() {

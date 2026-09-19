@@ -206,6 +206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // (main) thread during a dock refresh, so an app that has itself wedged must
         // not be able to hang us waiting for an AX reply. See the function's note.
         capAccessibilityMessagingTimeout()
+        NotificationBadgeStore.shared.start()
         // Decide how to handle Accessibility at launch (see `decideLaunchAccessibility`):
         //  • First run — show the welcome window that explains what Powerspaces does and
         //    why it needs Accessibility, with a button that triggers the system prompt.

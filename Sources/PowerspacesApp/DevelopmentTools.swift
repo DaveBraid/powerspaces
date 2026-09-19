@@ -48,6 +48,9 @@ enum DevelopmentTools {
             if let button = view as? DockButton { return [button] }
             return view.subviews.flatMap(buttons)
         }
+        for labeled in [false, true] {
+        prefs.showWindowLabels = labeled
+        prefs.windowLabelScope = .all
         for position in [BarPosition.bottom, .top, .left, .right] {
             prefs.barPosition = position
             let panel = DockPanel(screen: screen)
@@ -65,12 +68,26 @@ enum DevelopmentTools {
                     return NSPoint(x: frame.midX, y: frame.midY)
                 }
             }
+            for button in items {
+                button.setWindowBadge(count: 3)
+                button.setNotificationBadge("99+")
+            }
+            panel.contentView?.layoutSubtreeIfNeeded()
             let before = centers()
             let widths = items.map { $0.widthConstraint?.constant ?? 0 }
             let restingFrames = items.map { panel.convertToScreen($0.convert($0.bounds, to: nil)) }
             panel.previewMagnification()
             panel.contentView?.layoutSubtreeIfNeeded()
             let after = centers()
+            let badgesOK = items.allSatisfy { button in
+                let badges = button.subviews.compactMap { $0 as? DockBadgeView }
+                guard badges.count == 2, let red = badges.first(where: { $0.notification }),
+                      let count = badges.first(where: { !$0.notification }) else { return false }
+                let inWindow = red.convert(red.bounds, to: nil)
+                return !red.frame.intersects(count.frame) && red.hitTest(.zero) == nil
+                    && red.text == "99+" && panel.contentView!.bounds.contains(inWindow)
+            }
+            if !badgesOK { failures += 1; print("FAIL badge geometry \(position)") }
             let fixed = zip(before, after).allSatisfy {
                 abs(position.isVertical ? $0.x - $1.x : $0.y - $1.y) < 1
             }
@@ -99,7 +116,7 @@ enum DevelopmentTools {
                 return abs(actualLow - expectedLow) < 1 && abs(actualHigh - expectedHigh) < 1
             }
             panel.resetMagnification()
-            let restored = zip(items, widths).allSatisfy { abs(($0.widthConstraint?.constant ?? 0) - $1) < 0.01 }
+            let restored = zip(items, widths).allSatisfy { abs(($0.widthConstraint?.constant ?? 0) - $1) <= 1 } // AppKit 对标题宽度做点对齐。
             let unclipped = glass?.clipsToBounds == false && glass?.layer?.masksToBounds == false
             let pass = before.count == 2 && after.count == 2 && fixed && grew && centered && geometryOK && restored && unclipped
             if !pass { failures += 1 }
@@ -108,6 +125,7 @@ enum DevelopmentTools {
             if !panel.checkMagnificationInteractions() { failures += 1 }
             prefs.hoverAnimation = 0
             panel.close()
+        }
         }
         print("Dock layout: \(failures) failures")
         return failures == 0
@@ -432,6 +450,16 @@ final class SettingsPreviewDelegate: NSObject, NSApplicationDelegate {
         let panel = DockPanel(screen: screen)
         dock = panel
         panel.update(apps: sampleApps, animateChanges: false)
+        if CommandLine.arguments.contains("--badges") {
+            func decorate(_ view: NSView) {
+                if let button = view as? DockButton {
+                    button.setNotificationBadge(button.app?.name == "Finder" ? "99+" : "工作")
+                    button.setWindowBadge(count: 3)
+                }
+                view.subviews.forEach(decorate)
+            }
+            if let content = panel.contentView { decorate(content) }
+        }
         panel.show()
         if CommandLine.arguments.contains("--magnified") {
             DispatchQueue.main.async { panel.previewMagnification() }
