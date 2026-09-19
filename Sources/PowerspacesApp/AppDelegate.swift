@@ -809,9 +809,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // window-less treatments (reaping idle instances, and the window-less dock
         // items). Computed once here rather than in each helper.
         let pidsWithWindows = Set(snapshot.windows.map(\.pid))
-        let bundlesWithWindows = Set(snapshot.windows.compactMap(\.bundleID))
         reapWindowlessInstances(pidsWithWindows: pidsWithWindows)
         let displays = provider.displays()
+        let openWindows = DockModel.openWindows(in: snapshot, visibleSpaces: Set(displays.map(\.currentSpaceID)))
+        let pidsWithOpenWindows = Set(openWindows.map(\.pid))
+        let bundlesWithWindows = Set(openWindows.compactMap(\.bundleID))
         displaySpaces = displays
         // The active display's desktop number, for the optional menu-bar readout.
         statusItemController.updateDesktop(
@@ -937,7 +939,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 titleForWindow: titleReader.title(windowID:pid:)).map { app in
                     let running = app.isPinned ? app.withRunningPID(app.pid ?? app.bundleID.flatMap { runningPIDs[$0] }) : app
                     return running.withOpenWindows(running.isRunning && (running.bundleID.map(bundlesWithWindows.contains)
-                        ?? running.pid.map(pidsWithWindows.contains) ?? false))
+                        ?? running.pid.map(pidsWithOpenWindows.contains) ?? false))
                 } + fullscreenItems.map { app in
                     guard options.shouldLabel(app.windowCount), let id = app.windowID, let pid = app.pid else { return app }
                     return app.withTitle(titleReader.title(windowID: id, pid: pid))

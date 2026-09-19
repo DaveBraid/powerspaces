@@ -632,6 +632,28 @@ h.test("any desktop pin excludes an application from shared fullscreen items") {
     h.eq(pins.allPinnedBundleIDs(), Set(["local", "global"]))
 }
 
+h.test("dock dimming ignores closed backing windows across all visible displays") {
+    func candidate(_ id: CGWindowID, spaces: [SpaceID], onscreen: Bool = false,
+                   minimized: Bool = false, hidden: Bool = false) -> WindowInfo {
+        WindowInfo(windowID: id, pid: 100, ownerName: "App", bundleID: "app", spaceIDs: spaces,
+                   isOnscreen: onscreen, isMinimized: minimized, isHidden: hidden)
+    }
+    let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: [
+        candidate(1, spaces: []), // 关闭窗口后保留的后台对象。
+        candidate(2, spaces: [1]),
+        candidate(3, spaces: [2]), // 另一显示器当前桌面上的离屏残留。
+        candidate(4, spaces: [3]), // 非当前桌面的真实窗口。
+        candidate(5, spaces: [2], minimized: true),
+        candidate(6, spaces: [1], hidden: true),
+        candidate(7, spaces: [2], onscreen: true),
+        candidate(8, spaces: [], minimized: true),
+        candidate(9, spaces: [], onscreen: true), // 桌面元数据短暂缺失不误伤可见窗口。
+    ])
+    h.eq(DockModel.openWindows(in: snapshot, visibleSpaces: [1, 2]).map(\.windowID), [4, 5, 6, 7, 8, 9])
+    h.eq(DockModel.openWindows(in: SpaceSnapshot(activeSpaceID: 1, windows: Array(snapshot.windows.prefix(3))),
+                              visibleSpaces: [1, 2]).count, 0)
+}
+
 h.test("running and window presence remain independent through app lifecycle") {
     let alive = DockApp(bundleID: "app", name: "App", pid: 100, windowCount: 0)
     h.ok(alive.isRunning && !alive.hasOpenWindows)

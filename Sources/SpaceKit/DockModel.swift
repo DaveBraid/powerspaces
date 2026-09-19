@@ -135,6 +135,16 @@ public struct DockApp: Equatable, Sendable {
 /// Derives what the per-space dock should show. Pure function of a snapshot
 /// (plus the desktop's pins), so it's unit-testable without a window server.
 public enum DockModel {
+    /// 为图标明暗统计真实打开窗口；可见桌面上的离屏残留和无归属后台对象不计数。
+    /// 所有显示器的当前 Space 均需传入，最小化／隐藏及其他桌面的真实窗口继续计数。
+    public static func openWindows(in snapshot: SpaceSnapshot, visibleSpaces: Set<SpaceID>) -> [WindowInfo] {
+        snapshot.windows.filter { window in
+            !WindowFilter.isActiveSpacePhantom(
+                claimsActiveSpace: window.spaceIDs.isEmpty || !visibleSpaces.isDisjoint(with: window.spaceIDs),
+                isOnscreen: window.isOnscreen, isMinimized: window.isMinimized, isHidden: window.isHidden)
+        }
+    }
+
     /// 全屏窗口每个独立成项，在所有程序坞尾部显示；不按当前显示器过滤，不猜测窗口大小。
     public static func fullscreenItems(snapshot: SpaceSnapshot, fullscreenSpaces: Set<SpaceID>,
                                        pinnedBundleIDs: Set<String>) -> [DockApp] {

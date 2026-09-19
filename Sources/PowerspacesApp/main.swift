@@ -3,6 +3,22 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import AppKit
+import SpaceKit
+
+// 只读核对窗口明暗判定；传入 bundle ID，不激活应用或保存配置。
+if let index = CommandLine.arguments.firstIndex(of: "--check-window-presence") {
+    let provider = CGSSpaceProvider()
+    let snapshot = try provider.snapshot()
+    let open = DockModel.openWindows(in: snapshot, visibleSpaces: Set(provider.displays().map(\.currentSpaceID)))
+    for bundle in CommandLine.arguments.dropFirst(index + 1) {
+        let raw = snapshot.windows.filter { $0.bundleID == bundle }
+        print("\(bundle): snapshot=\(raw.count), open=\(open.filter { $0.bundleID == bundle }.count)")
+        for window in raw {
+            print("  id=\(window.windowID) spaces=\(window.spaceIDs) onscreen=\(window.isOnscreen) minimized=\(window.isMinimized) hidden=\(window.isHidden)")
+        }
+    }
+    exit(0)
+}
 
 if CommandLine.arguments.contains("--check-fullscreen-preview") {
     DevelopmentTools.checkFullscreenPreview()
