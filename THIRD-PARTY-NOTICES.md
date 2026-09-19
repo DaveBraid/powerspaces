@@ -37,3 +37,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+
+## AltTab Accessibility token layout
+
+The bounded fullscreen AX lookup in `Sources/SpaceKit/WindowAX.swift` uses the remote token layout documented by [AltTab](https://github.com/lwouis/alt-tab-macos), `src/macos/api-wrappers/AXUIElement.swift` (GPL-3.0). The GPL-3.0 license is included in this repository's `LICENSE`.

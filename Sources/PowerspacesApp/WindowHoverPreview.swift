@@ -150,7 +150,7 @@ private final class HoverPreviewCard: NSButton {
             guard let windows else { self.showMessage("Window preview unavailable"); return }
             guard !windows.isEmpty else { self.showMessage("No windows on this desktop"); return }
             self.show(windows, app: app)
-            WindowThumbnailService.shared.capture(windows) { [weak self, weak owner] id, title, image, error in
+            WindowThumbnailService.shared.capture(windows, allowOffscreen: app.isFullscreenItem) { [weak self, weak owner] id, title, image, error in
                 guard let self, owner != nil, self.generation == token, let card = self.cards[id] else { return }
                 if let title, !title.isEmpty {
                     card.caption.stringValue = title

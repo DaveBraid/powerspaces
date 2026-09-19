@@ -637,3 +637,12 @@
 "needs Accessibility permission to focus this window." = "需要辅助功能权限才能聚焦此窗口。";
 "this window is no longer available on this desktop." = "此窗口已不在当前桌面或已关闭。";
 "could not focus this window." = "无法聚焦此窗口。";
+
+// 全屏窗口分区与窗口存在状态。
+"Running dots" = "运行圆点";
+"Dots indicate running processes. Apps without any open windows are dimmed; optionally outline running apps." = "圆点表示程序仍在运行；没有打开窗口的应用图标会调暗，也可为运行中的应用附加边框。";
+"Dim apps without windows" = "无窗口应用调暗";
+"Icon opacity when the app has no open windows on any desktop. Running dots remain visible." = "应用在所有桌面都没有打开的窗口时的图标不透明度；运行圆点保持清晰。";
+"Dots indicate whether an app is running. Apps with no windows are dimmed, including after quitting. Pinned apps remain after quitting; other apps disappear. Minimized and hidden windows still count as open." = "圆点表示应用是否运行；没有窗口时图标调暗。固定应用退出后保留、圆点熄灭且图标调暗；未固定应用退出后消失。最小化和隐藏窗口仍视为已打开。";
+"This full-screen window is no longer available." = "此全屏窗口已关闭或已退出全屏。";
+"Window is on another desktop; click to focus" = "窗口位于其他桌面，点击可前往";

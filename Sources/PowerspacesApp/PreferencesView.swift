@@ -516,16 +516,14 @@ struct PreferencesView: View {
                 }
                 enumPicker(L10n.string("Running indicator"),
                            help: L10n.string(
-                               "How running apps are told apart from pinned-but-not-running "
-                               + "shortcuts: dim the not-running ones, or box the running ones."),
+                               "Dots indicate running processes. Apps without any open windows are dimmed; optionally outline running apps."),
                            bind(\.runningIndicator)) { $0.label }
                 if advanced {
-                    if prefs.runningIndicator == .dimmed {
-                        NumericRow(title: L10n.string("Dim pinned / not-running"),
-                                   help: L10n.string("Opacity of pinned apps that aren't running (lower = fainter)."),
-                                   spec: Preferences.dimLevelSpec,
-                                   value: bind(\.dimLevel), isCustom: bind(\.dimLevelCustom))
-                    } else {
+                    NumericRow(title: L10n.string("Dim apps without windows"),
+                               help: L10n.string("Icon opacity when the app has no open windows on any desktop. Running dots remain visible."),
+                               spec: Preferences.dimLevelSpec,
+                               value: bind(\.dimLevel), isCustom: bind(\.dimLevelCustom))
+                    if prefs.runningIndicator == .boxed {
                         NumericRow(title: L10n.string("Outline gap"),
                                    help: L10n.string("How far the running-app outline floats out from the icon, in points (0 hugs the icon)."),
                                    spec: Preferences.boxGapSpec,
@@ -552,8 +550,7 @@ struct PreferencesView: View {
                 Text(L10n.string("Running indicator"))
             } footer: {
                 Text(L10n.string(
-                    "“Dim not-running” fades pinned apps that aren't open; “Box running” frames open "
-                    + "apps with a colored outline instead."))
+                    "Dots indicate whether an app is running. Apps with no windows are dimmed, including after quitting. Pinned apps remain after quitting; other apps disappear. Minimized and hidden windows still count as open."))
             }
         }
         .formStyle(.grouped)

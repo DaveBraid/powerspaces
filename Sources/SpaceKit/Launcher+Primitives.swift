@@ -24,11 +24,11 @@ extension Launcher {
     /// 预览可要求精确窗口成功；缺省仍保留历史激活与 Finder 重试逻辑，返回置顶结果。
     @discardableResult
     func raise(windowID: CGWindowID, pid: pid_t, activateApp: Bool = true,
-               requireExactWindow: Bool = false) -> Bool {
+               requireExactWindow: Bool = false, knownWindow: AXUIElement? = nil) -> Bool {
         // Pull the window out of the Dock and bring it forward. `unminimize` first
         // because kAXRaiseAction does nothing to a minimized window.
         func tryRaise() -> Bool {
-            guard let axWindow = WindowAX.axWindow(windowID: windowID, pid: pid) else { return false }
+            guard let axWindow = knownWindow ?? WindowAX.axWindow(windowID: windowID, pid: pid) else { return false }
             WindowAX.unminimize(axWindow)
             return AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString) == .success
         }

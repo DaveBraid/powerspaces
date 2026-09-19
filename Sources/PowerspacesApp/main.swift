@@ -4,6 +4,10 @@
 
 import AppKit
 
+if CommandLine.arguments.contains("--check-fullscreen-preview") {
+    DevelopmentTools.checkFullscreenPreview()
+    exit(0)
+}
 if CommandLine.arguments.contains("--check-preview-capture") {
     DevelopmentTools.checkWindowPreviewCapture()
     exit(0)

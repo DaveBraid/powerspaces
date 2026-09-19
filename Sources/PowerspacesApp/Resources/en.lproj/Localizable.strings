@@ -637,3 +637,12 @@
 "needs Accessibility permission to focus this window." = "needs Accessibility permission to focus this window.";
 "this window is no longer available on this desktop." = "this window is no longer available on this desktop.";
 "could not focus this window." = "could not focus this window.";
+
+// 全屏窗口分区与窗口存在状态。
+"Running dots" = "Running dots";
+"Dots indicate running processes. Apps without any open windows are dimmed; optionally outline running apps." = "Dots indicate running processes. Apps without any open windows are dimmed; optionally outline running apps.";
+"Dim apps without windows" = "Dim apps without windows";
+"Icon opacity when the app has no open windows on any desktop. Running dots remain visible." = "Icon opacity when the app has no open windows on any desktop. Running dots remain visible.";
+"Dots indicate whether an app is running. Apps with no windows are dimmed, including after quitting. Pinned apps remain after quitting; other apps disappear. Minimized and hidden windows still count as open." = "Dots indicate whether an app is running. Apps with no windows are dimmed, including after quitting. Pinned apps remain after quitting; other apps disappear. Minimized and hidden windows still count as open.";
+"This full-screen window is no longer available." = "This full-screen window is no longer available.";
+"Window is on another desktop; click to focus" = "Window is on another desktop; click to focus";

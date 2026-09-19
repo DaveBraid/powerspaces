@@ -161,6 +161,10 @@ public final class PinStore {
 
     public func spacePins(onSpace uuid: String) -> [String] { model.spacePins(onSpace: uuid) }
     public func everywherePins() -> [String] { model.everywherePins() }
+    /// 任一桌面固定过的应用都保留原固定项，不进入共享全屏分区。
+    public func allPinnedBundleIDs() -> Set<String> {
+        Set(model.everywhere + model.pinsBySpace.values.flatMap { $0 })
+    }
     public func everywhereExceptions(onSpace uuid: String) -> [String] { model.everywhereExceptions(onSpace: uuid) }
     public func isPinned(_ b: String, onSpace uuid: String) -> Bool { model.isPinned(b, onSpace: uuid) }
 

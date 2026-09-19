@@ -52,3 +52,29 @@ extension Launcher {
         return .focused
     }
 }
+
+extension Launcher {
+    /// 共享全屏条目只读取指定窗口，重新核对 PID、应用标识及全屏 Space，拒绝过时条目。
+    public func fullscreenWindow(windowID: CGWindowID, pid: pid_t, target: AppTarget) throws -> WindowInfo? {
+        let snapshot = try provider.snapshot()
+        let spaces = provider.fullscreenSpaceIDs()
+        return snapshot.windows.first {
+            $0.windowID == windowID && $0.pid == pid && target.matches($0)
+                && !spaces.isDisjoint(with: $0.spaceIDs)
+        }
+    }
+
+    /// 用户明确点击共享全屏窗口时允许切换到它所在的 Space，复用精确置顶，不最小化或重开应用。
+    public func focusFullscreenWindow(windowID: CGWindowID, pid: pid_t, target: AppTarget) throws -> LaunchOutcome {
+        guard WindowAX.isTrusted else { return warned(target, "needs Accessibility permission to focus this window.") }
+        guard try fullscreenWindow(windowID: windowID, pid: pid, target: target) != nil else {
+            return warned(target, "This full-screen window is no longer available.")
+        }
+        NSRunningApplication(processIdentifier: pid)?.unhide()
+        guard let window = WindowAX.fullscreenWindow(windowID: windowID, pid: pid),
+              raise(windowID: windowID, pid: pid, requireExactWindow: true, knownWindow: window) else {
+            return warned(target, "could not focus this window.")
+        }
+        return .focused
+    }
+}

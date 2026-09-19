@@ -8,7 +8,7 @@ import SpaceKit
 enum DevelopmentTools {
     static let isAppearancePreview = CommandLine.arguments.contains("--preview-appearance")
     static let isGlassPreview = CommandLine.arguments.contains("--preview-glass")
-    static let isPreview = CommandLine.arguments.contains("--check-preview-capture") || CommandLine.arguments.contains("--check-window-preview") || CommandLine.arguments.contains("--check-dock-performance") || isGlassPreview || isAppearancePreview || CommandLine.arguments.contains("--preview-settings") || CommandLine.arguments.contains("--check-dock-layout")
+    static let isPreview = CommandLine.arguments.contains("--check-fullscreen-preview") || CommandLine.arguments.contains("--check-preview-capture") || CommandLine.arguments.contains("--check-window-preview") || CommandLine.arguments.contains("--check-dock-performance") || isGlassPreview || isAppearancePreview || CommandLine.arguments.contains("--preview-settings") || CommandLine.arguments.contains("--check-dock-layout")
     static let previewDirectory = FileManager.default.temporaryDirectory
         .appendingPathComponent("powerspaces-preview-\(UUID().uuidString)")
 
@@ -73,6 +73,55 @@ enum DevelopmentTools {
             previous?.activate()
             print("Preview live: noActivation=\(noActivation) restored=\(restored) exact=\(exact) unhidden=\(unhidden)")
             exit(captured && noActivation && restored && exact && unhidden ? 0 : 1)
+        }
+        app.run()
+    }
+
+    /// 仅操作受控全屏测试应用；验证跨桌面截图内容、无激活及点击后的精确聚焦，不保存图片。
+    @MainActor static func checkFullscreenPreview() {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        Task { @MainActor in
+            guard CGPreflightScreenCaptureAccess(), AccessibilityPermission.isTrusted,
+                  let fixture = NSRunningApplication.runningApplications(withBundleIdentifier: "local.ps.fullscreen-validation").first else {
+                print("Fullscreen preview: missing permission or fixture"); exit(2)
+            }
+            let previous = NSWorkspace.shared.frontmostApplication
+            let provider = CGSSpaceProvider()
+            let launcher = Launcher(provider: provider, config: .defaults, warn: { print($0) })
+            let spaces = provider.fullscreenSpaceIDs()
+            guard let info = try? provider.snapshot().windows.first(where: {
+                $0.pid == fixture.processIdentifier && !spaces.isDisjoint(with: $0.spaceIDs)
+            }) else { print("Fullscreen fixture unavailable"); exit(2) }
+            let before = provider.displays().map(\.currentSpaceID)
+            let offscreen = Set(before).isDisjoint(with: info.spaceIDs)
+            let captured: Bool = await withCheckedContinuation { continuation in
+                WindowThumbnailService.shared.capture([info], allowOffscreen: true) { _, _, image, error in
+                    var teal = false
+                    if let image, let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                        let bitmap = NSBitmapImageRep(cgImage: cg)
+                        if let color = bitmap.colorAt(x: cg.width / 4, y: cg.height / 4)?.usingColorSpace(.deviceRGB) {
+                            teal = color.greenComponent > color.redComponent + 0.1 && color.blueComponent > color.redComponent + 0.1
+                        }
+                        print("Fullscreen image: \(cg.width)x\(cg.height), teal=\(teal)")
+                    }
+                    print("Fullscreen capture error: \(error ?? "none")")
+                    continuation.resume(returning: teal)
+                }
+            }
+            let untouched = previous?.processIdentifier == NSWorkspace.shared.frontmostApplication?.processIdentifier
+                && before == provider.displays().map(\.currentSpaceID)
+            let target = AppTarget(bundleID: fixture.bundleIdentifier, name: "PS Full-screen Validation")
+            _ = try? launcher.focusFullscreenWindow(windowID: info.windowID, pid: info.pid, target: target)
+            try? await Task.sleep(for: .seconds(2)) // 等待系统全屏 Space 切换动画完成。
+            let focused = NSWorkspace.shared.frontmostApplication?.processIdentifier == info.pid
+                && !Set(provider.displays().map(\.currentSpaceID)).isDisjoint(with: info.spaceIDs)
+            WindowThumbnailService.shared.cancel()
+            fixture.terminate()
+            previous?.activate()
+            print("Fullscreen preview: offscreen=\(offscreen) content=\(captured) untouched=\(untouched) focused=\(focused)")
+            fflush(stdout)
+            exit(offscreen && captured && untouched && focused ? 0 : 1)
         }
         app.run()
     }
@@ -231,6 +280,28 @@ enum DevelopmentTools {
             if !panel.checkMagnificationPointerRouting() { failures += 1 }
             if !labeled && position == .bottom && !panel.checkMagnificationBurst() { failures += 1 }
             prefs.hoverAnimation = 0
+            // 三个状态分别检查：已退出固定项、运行但无窗口、共享全屏窗口。
+            prefs.dockDividerEnabled = true
+            let fixtures = [
+                DockApp(bundleID: "quit", name: "Quit", pid: nil, windowCount: 0, isPinnedHere: true),
+                DockApp(bundleID: "alive", name: "Alive", pid: 2, windowCount: 0),
+                DockApp(bundleID: "full", name: "Full", pid: 3, windowCount: 1,
+                        windowIDs: [42], windowID: 42, isFullscreenItem: true)
+            ]
+            panel.update(apps: fixtures, animateChanges: false)
+            if let root = panel.contentView {
+                let items = buttons(root)
+                let opacity = items.compactMap { ($0.cell as? DockItemCell)?.iconOpacity }
+                let dots = items.map { $0.subviews.filter { $0 is AdaptiveDockMark }.count }
+                let dividers = restingTree(root).filter { $0 is DockDividerView }.count
+                let valid = opacity == [CGFloat(prefs.dimLevel), CGFloat(prefs.dimLevel), 1]
+                    && dots == [0, 1, 1] && dividers == 2 && items.allSatisfy { $0.alphaValue == 1 }
+                if !valid { failures += 1 }
+                panel.update(apps: Array(fixtures.prefix(2)), animateChanges: false)
+                let removed = restingTree(root).filter { $0 is DockDividerView }.count == 1
+                if !removed { failures += 1 }
+                print("Dock window states \(position): correct=\(valid) fullscreenDividerRemoved=\(removed)")
+            } else { failures += 1 }
             panel.close()
         }
         }
@@ -540,10 +611,12 @@ final class SettingsPreviewDelegate: NSObject, NSApplicationDelegate {
     private var dock: DockPanel?
     private let sampleApps = [
         DockApp(bundleID: "com.apple.finder", name: "Finder", pid: nil, windowCount: 0, isPinnedHere: true),
-        DockApp(bundleID: "com.apple.Safari", name: "Safari", pid: nil, windowCount: 0, isPinnedHere: true),
-        DockApp(bundleID: "com.apple.Terminal", name: "Terminal", pid: 1, windowCount: 1, isPinnedHere: true),
-        DockApp(bundleID: "com.apple.TextEdit", name: "TextEdit", pid: 1, windowCount: 1,
+        DockApp(bundleID: "com.apple.Safari", name: "Safari", pid: 2147483646, windowCount: 0, isPinnedHere: true),
+        DockApp(bundleID: "com.apple.Terminal", name: "Terminal", pid: 2147483646, windowCount: 1, isPinnedHere: true),
+        DockApp(bundleID: "com.apple.TextEdit", name: "TextEdit", pid: 2147483646, windowCount: 1,
                 title: "中文与 English 标题布局预览"),
+        DockApp(bundleID: "com.apple.calculator", name: "Calculator", pid: 2147483645, windowCount: 1,
+                windowIDs: [999], windowID: 999, title: "Full screen", isFullscreenItem: true),
     ]
 
     /// 外观预览使用静态图标，不连接真实窗口策略或桌面管理。

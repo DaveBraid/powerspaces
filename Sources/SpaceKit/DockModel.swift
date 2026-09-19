@@ -47,12 +47,15 @@ public struct DockApp: Equatable, Sendable {
     /// The wide "window titles" mode renders this item's title in bold so the
     /// focused window stands out among the bars.
     public let isActive: Bool
+    public let isFullscreenItem: Bool // 共享全屏分区中的精确窗口条目。
+    public let hasOpenWindows: Bool // 应用在所有桌面上是否有窗口，独立于当前桌面窗口数。
 
     public init(bundleID: String?, name: String, pid: pid_t?, windowCount: Int,
                 isPinnedHere: Bool = false, isPinnedEverywhere: Bool = false,
                 isExcludedHere: Bool = false,
                 windowIDs: [CGWindowID] = [], windowID: CGWindowID? = nil,
-                title: String? = nil, isLauncher: Bool = false, isActive: Bool = false) {
+                title: String? = nil, isLauncher: Bool = false, isActive: Bool = false,
+                isFullscreenItem: Bool = false, hasOpenWindows: Bool? = nil) {
         self.bundleID = bundleID
         self.name = name
         self.pid = pid
@@ -65,6 +68,8 @@ public struct DockApp: Equatable, Sendable {
         self.title = title
         self.isLauncher = isLauncher
         self.isActive = isActive
+        self.isFullscreenItem = isFullscreenItem
+        self.hasOpenWindows = hasOpenWindows ?? (windowCount > 0)
     }
 
     /// Whether this entry shows in the dock as a pinned shortcut. An all-desktops
@@ -87,7 +92,8 @@ public struct DockApp: Equatable, Sendable {
         DockApp(bundleID: bundleID, name: name, pid: pid, windowCount: windowCount,
                 isPinnedHere: isPinnedHere, isPinnedEverywhere: isPinnedEverywhere,
                 isExcludedHere: isExcludedHere, windowIDs: windowIDs, windowID: windowID,
-                title: title, isLauncher: isLauncher, isActive: isActive)
+                title: title, isLauncher: isLauncher, isActive: isActive,
+                isFullscreenItem: isFullscreenItem, hasOpenWindows: hasOpenWindows)
     }
 
     /// A copy of this entry carrying a live window label (its title-bar text).
@@ -96,7 +102,8 @@ public struct DockApp: Equatable, Sendable {
                 isPinnedHere: isPinnedHere, isPinnedEverywhere: isPinnedEverywhere,
                 isExcludedHere: isExcludedHere,
                 windowIDs: windowIDs, windowID: windowID, title: title,
-                isLauncher: isLauncher, isActive: isActive)
+                isLauncher: isLauncher, isActive: isActive,
+                isFullscreenItem: isFullscreenItem, hasOpenWindows: hasOpenWindows)
     }
 
     /// A copy of this entry flagged as (or no longer) the active/forefront window.
@@ -105,7 +112,17 @@ public struct DockApp: Equatable, Sendable {
                 isPinnedHere: isPinnedHere, isPinnedEverywhere: isPinnedEverywhere,
                 isExcludedHere: isExcludedHere,
                 windowIDs: windowIDs, windowID: windowID, title: title,
-                isLauncher: isLauncher, isActive: isActive)
+                isLauncher: isLauncher, isActive: isActive,
+                isFullscreenItem: isFullscreenItem, hasOpenWindows: hasOpenWindows)
+    }
+
+    /// 补充全局窗口状态，不改变本桌面的窗口数量与点击目标。
+    public func withOpenWindows(_ hasWindows: Bool) -> DockApp {
+        DockApp(bundleID: bundleID, name: name, pid: pid, windowCount: windowCount,
+                isPinnedHere: isPinnedHere, isPinnedEverywhere: isPinnedEverywhere,
+                isExcludedHere: isExcludedHere, windowIDs: windowIDs, windowID: windowID,
+                title: title, isLauncher: isLauncher, isActive: isActive,
+                isFullscreenItem: isFullscreenItem, hasOpenWindows: hasWindows)
     }
 
     /// Stable identity used to remember this app's slot in the saved dock order.
@@ -118,6 +135,18 @@ public struct DockApp: Equatable, Sendable {
 /// Derives what the per-space dock should show. Pure function of a snapshot
 /// (plus the desktop's pins), so it's unit-testable without a window server.
 public enum DockModel {
+    /// 全屏窗口每个独立成项，在所有程序坞尾部显示；不按当前显示器过滤，不猜测窗口大小。
+    public static func fullscreenItems(snapshot: SpaceSnapshot, fullscreenSpaces: Set<SpaceID>,
+                                       pinnedBundleIDs: Set<String>) -> [DockApp] {
+        snapshot.windows.filter { window in
+            !fullscreenSpaces.isDisjoint(with: window.spaceIDs)
+                && !(window.bundleID.map(pinnedBundleIDs.contains) ?? false)
+        }.sorted { $0.windowID < $1.windowID }.map { window in
+            DockApp(bundleID: window.bundleID, name: window.ownerName, pid: window.pid, windowCount: 1,
+                    windowIDs: [window.windowID], windowID: window.windowID, isFullscreenItem: true)
+        }
+    }
+
     /// Apps that have at least one window on the current Space.
     public static func apps(onCurrentSpace snapshot: SpaceSnapshot) -> [DockApp] {
         group(snapshot.windows(onSpace: snapshot.activeSpaceID))
@@ -354,7 +383,8 @@ public enum DockModel {
                         windowCount: app.windowCount,
                         isPinnedHere: app.isPinnedHere, isPinnedEverywhere: app.isPinnedEverywhere,
                         isExcludedHere: app.isExcludedHere,
-                        windowIDs: app.windowIDs, windowID: id, title: app.title)
+                        windowIDs: app.windowIDs, windowID: id, title: app.title,
+                        isFullscreenItem: app.isFullscreenItem, hasOpenWindows: app.hasOpenWindows)
             }
         }
     }

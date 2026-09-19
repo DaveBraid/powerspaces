@@ -110,17 +110,16 @@ enum HUDPosition: String, CaseIterable, Identifiable {
     var label: String { L10n.string(rawValue.capitalized) }
 }
 
-/// How running apps are told apart from pinned-but-not-running shortcuts.
+/// 运行灯始终指示进程；图标统一按全局窗口状态调暗，框选是附加样式。
 enum RunningIndicator: String, CaseIterable, Identifiable {
-    /// Dim the *not-running* (pinned) icons; running icons stay full opacity.
+    /// 保留旧配置 raw value；默认只显示运行圆点。
     case dimmed
-    /// Frame each *running* icon with a rounded outline and tint its inside with a
-    /// color; not-running icons stay plain (nothing is dimmed).
+    /// 为运行中的应用附加边框，不改变无窗口调暗规则。
     case boxed
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .dimmed: return L10n.string("Dim not-running")
+        case .dimmed: return L10n.string("Running dots")
         case .boxed: return L10n.string("Box running")
         }
     }

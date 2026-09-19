@@ -115,7 +115,9 @@ extension DockPanel: NSMenuDelegate {
         if app.windowID != nil {
             menu.addItem(item(L10n.string("Close this window"), #selector(closeWindow(_:)), app, symbol: "xmark"))
         }
-        menu.addItem(item(L10n.string("Quit (this desktop)"), #selector(closeThisDesktop(_:)), app, symbol: "xmark.circle"))
+        if !app.isFullscreenItem {
+            menu.addItem(item(L10n.string("Quit (this desktop)"), #selector(closeThisDesktop(_:)), app, symbol: "xmark.circle"))
+        }
         menu.addItem(item(L10n.string("Quit (all desktops)"), #selector(closeAllDesktops(_:)), app, symbol: "xmark.octagon"))
         addDockColorItems(to: menu)
         popUpMenu(menu, from: button)

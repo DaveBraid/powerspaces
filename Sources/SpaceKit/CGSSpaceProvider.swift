@@ -67,6 +67,20 @@ public final class CGSSpaceProvider: SpaceProviding {
                              runningBundleIDs: running)
     }
 
+    /// 读取所有显示器的全屏 Space（含分屏）；不能只检查当前可见桌面。
+    public func fullscreenSpaceIDs() -> Set<SpaceID> {
+        Self.fullscreenSpaceIDs(in: managedDisplaySpaces() ?? [])
+    }
+
+    /// 独立解析可验证的系统元数据；缺失或未知类型不猜测为全屏。
+    public static func fullscreenSpaceIDs(in displays: [[String: Any]]) -> Set<SpaceID> {
+        Set(displays.flatMap { $0["Spaces"] as? [[String: Any]] ?? [] }.compactMap { space in
+            guard (space["type"] as? NSNumber)?.intValue == 4 else { return nil }
+            return (space["ManagedSpaceID"] as? NSNumber)?.uint64Value
+                ?? (space["id64"] as? NSNumber)?.uint64Value
+        })
+    }
+
     /// 返回所有桌面的稳定标识，包括隐藏桌面；移窗后无需先切过去才能迁移归属。
     public func spaceUUIDs() -> [SpaceID: String] {
         var result: [SpaceID: String] = [:]

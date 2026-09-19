@@ -9,6 +9,22 @@ import SpaceKit
 /// long-press into a left/right drag so the user can reorder the dock.
 /// 标题与图标使用明确分区，避免 NSButtonCell 根据原始大图尺寸挤掉文字。
 final class DockItemCell: NSButtonCell {
+    var iconOpacity: CGFloat = 1
+
+    /// 只改变图标绘制透明度，运行灯和徽章保留独立状态与可读性。
+    override func drawImage(_ image: NSImage, withFrame frame: NSRect, in controlView: NSView) {
+        guard iconOpacity < 1, let context = NSGraphicsContext.current?.cgContext else {
+            super.drawImage(image, withFrame: frame, in: controlView)
+            return
+        }
+        context.saveGState()
+        context.setAlpha(iconOpacity)
+        context.beginTransparencyLayer(auxiliaryInfo: nil) // NSButtonCell 会重设内部 alpha，整组图标在合成时调暗。
+        super.drawImage(image, withFrame: frame, in: controlView)
+        context.endTransparencyLayer()
+        context.restoreGState()
+    }
+
     override func imageRect(forBounds rect: NSRect) -> NSRect {
         guard imagePosition == .imageLeading else { return super.imageRect(forBounds: rect) }
         let side = rect.height * 0.7

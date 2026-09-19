@@ -16,10 +16,16 @@ import Foundation
 public protocol SpaceProviding {
     func snapshot() throws -> SpaceSnapshot
     func displays() -> [DisplaySpaceInfo]
+    func fullscreenSpaceIDs() -> Set<SpaceID>
     func spaceUUIDs() -> [SpaceID: String]
 }
 
 public extension SpaceProviding {
+    /// 默认提供可见全屏桌面；真实实现同时读取隐藏的全屏桌面。
+    func fullscreenSpaceIDs() -> Set<SpaceID> {
+        Set(displays().filter(\.isFullscreen).map(\.currentSpaceID))
+    }
+
     /// 假数据提供器默认提供可见桌面；真实实现还提供隐藏桌面，以便立即识别移窗。
     func spaceUUIDs() -> [SpaceID: String] {
         Dictionary(displays().map { ($0.currentSpaceID, $0.currentSpaceUUID) },

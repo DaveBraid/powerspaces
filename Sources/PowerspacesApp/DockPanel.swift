@@ -668,9 +668,18 @@ final class DockPanel: NSPanel {
         // start from), animated alongside an arrival so the bar grows smoothly.
         var morphs: [(button: DockButton, from: CGFloat)] = []
         var insertedDivider = false
+        var insertedFullscreenDivider = false
         let hasPins = apps.contains { $0.isPinned || $0.isLauncher }
         for (app, slotKey) in zip(apps, keys) {
-            if hasPins, !insertedDivider, !app.isPinned, !app.isLauncher {
+            if app.isFullscreenItem, !insertedFullscreenDivider {
+                let divider = DockDividerView(verticalDock: prefs.barPosition.isVertical,
+                    length: side * CGFloat(prefs.dockDividerLength), gap: CGFloat(prefs.dockDividerGap), crossSize: side,
+                    thickness: CGFloat(prefs.dockDividerThickness))
+                stack.addArrangedSubview(divider)
+                divider.align(to: effect)
+                insertedFullscreenDivider = true // 全屏分区非空才显示，独立于固定项分隔线开关。
+            }
+            if !app.isFullscreenItem, hasPins, !insertedDivider, !app.isPinned, !app.isLauncher {
                 if prefs.dockDividerEnabled {
                     let divider = DockDividerView(verticalDock: prefs.barPosition.isVertical,
                         length: side * CGFloat(prefs.dockDividerLength), gap: CGFloat(prefs.dockDividerGap), crossSize: side,
@@ -711,8 +720,8 @@ final class DockPanel: NSPanel {
             button.imageScaling = .scaleProportionallyUpOrDown
             button.image = icon(for: app)
             button.toolTip = tooltip(for: app)
-            // 仅未运行固定项变灰；运行状态包含其他桌面的进程。
-            button.alphaValue = (app.isPinned && !app.isRunning) ? dim : 1.0
+            // 图标按全局窗口状态调暗；小圆点仍独立指示进程运行，不一起变暗。
+            (button.cell as? DockItemCell)?.iconOpacity = !app.isLauncher && !app.hasOpenWindows ? dim : 1
             button.setRunningDot(app.isRunning && !app.isLauncher)
             if boxed {
                 button.setRunningBox(active: app.isRunning,
@@ -789,6 +798,7 @@ final class DockPanel: NSPanel {
         return apps.map { app in
             let n = seen[app.orderKey, default: 0]
             seen[app.orderKey] = n + 1
+            if app.isFullscreenItem, let id = app.windowID { return "fullscreen:\(id)" }
             return "\(app.orderKey)#\(n)"
         }
     }
@@ -1057,6 +1067,7 @@ final class DockPanel: NSPanel {
     // MARK: - Drag-to-reorder
 
     private func beginReorder(_ button: DockButton) {
+        guard button.app?.isFullscreenItem != true else { return }
         WindowHoverPreview.shared.close(for: self)
         resetMagnification()
         isReordering = true
@@ -1066,11 +1077,13 @@ final class DockPanel: NSPanel {
     /// Slides the dragged icon to the slot the cursor is over, shifting the
     /// others aside. Driven live as the pointer moves.
     private func updateReorder(_ button: DockButton, at locationInWindow: NSPoint) {
-        guard let current = dockArrangedSubviews.firstIndex(of: button) else { return }
+        guard button.app?.isFullscreenItem != true,
+              let current = dockArrangedSubviews.firstIndex(of: button) else { return }
         let proposed = slotIndex(forCursorAt: locationInWindow, ignoring: button)
         let group = dockArrangedSubviews.enumerated().filter {
             guard let app = ($0.element as? DockButton)?.app, let moving = button.app else { return false }
-            return (app.isPinned || app.isLauncher) == (moving.isPinned || moving.isLauncher)
+            return app.isFullscreenItem == moving.isFullscreenItem
+                && (app.isPinned || app.isLauncher) == (moving.isPinned || moving.isLauncher)
         }.map(\.offset)
         let target = min(max(proposed, group.min() ?? current), group.max() ?? current)
         guard target != current else { return }
@@ -1084,6 +1097,7 @@ final class DockPanel: NSPanel {
     }
 
     private func endReorder(_ button: DockButton) {
+        guard button.app?.isFullscreenItem != true else { return }
         button.setLifted(false)
         let reordered = dockArrangedSubviews.compactMap { ($0 as? DockButton)?.app }
         apps = reordered // keep our cache in step so the follow-up refresh is a no-op
@@ -1091,7 +1105,7 @@ final class DockPanel: NSPanel {
         // With the "Windows" feature on, an app can occupy several adjacent
         // buttons; collapse them to one key per app (first occurrence wins) so
         // the saved arrangement stays one entry per app.
-        onReorder?(reordered.map(\.orderKey).uniqued())
+        onReorder?(reordered.filter { !$0.isFullscreenItem }.map(\.orderKey).uniqued())
     }
 
     // MARK: - Drag-in (an .app dragged onto the bar)
@@ -1828,7 +1842,9 @@ final class DockPanel: NSPanel {
 
     private func icon(for app: DockApp) -> NSImage? {
         if app.isLauncher { return LauncherIcon.image(baseColor: Preferences.shared.launcherIconColor) }
-        if let pid = app.pid, let icon = NSRunningApplication(processIdentifier: pid)?.icon {
+        if let pid = app.pid, let running = NSRunningApplication(processIdentifier: pid),
+           app.bundleID == nil || running.bundleIdentifier == app.bundleID,
+           let icon = running.icon {
             return icon
         }
         if let bundleID = app.bundleID,

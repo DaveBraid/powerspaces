@@ -579,6 +579,71 @@ h.test("AppStrategy round-trips through JSON") {
 
 print("DockModel")
 
+h.test("fullscreen sections use all Space metadata and exclude every pinned application") {
+    let metadata: [[String: Any]] = [
+        ["Spaces": [["ManagedSpaceID": 1, "type": 0], ["ManagedSpaceID": 10, "type": 4]]],
+        ["Spaces": [["id64": 20, "type": 4], ["id64": 30, "type": 99], ["type": 4]]]
+    ]
+    let full = CGSSpaceProvider.fullscreenSpaceIDs(in: metadata)
+    h.eq(full, Set<SpaceID>([10, 20]))
+    let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: [
+        win(1, 100, bundle: "mixed", spaces: [1]),
+        win(2, 100, bundle: "mixed", spaces: [10]),
+        win(3, 200, bundle: "pinned", spaces: [20]),
+        win(4, 300, bundle: "other-screen", spaces: [20]),
+        win(5, 400, bundle: "ordinary", spaces: [30])
+    ])
+    let items = DockModel.fullscreenItems(snapshot: snapshot, fullscreenSpaces: full, pinnedBundleIDs: ["pinned"])
+    h.eq(items.map(\.windowID), [2, 4])
+    h.ok(items.allSatisfy { $0.isFullscreenItem && $0.isRunning && $0.hasOpenWindows && !$0.isPinned })
+    h.ok(items[0].withTitle("Full").withActive(true).withRunningPID(100).isFullscreenItem)
+    let ids = Set(items.flatMap(\.windowIDs))
+    let local = SpaceSnapshot(activeSpaceID: 1, windows: snapshot.windows.filter { !ids.contains($0.windowID) })
+    h.eq(DockModel.apps(onCurrentSpace: local).flatMap(\.windowIDs), [1])
+    let otherDesktop = SpaceSnapshot(activeSpaceID: 30, windows: snapshot.windows)
+    h.eq(DockModel.fullscreenItems(snapshot: otherDesktop, fullscreenSpaces: full, pinnedBundleIDs: ["pinned"]), items)
+    h.eq(DockModel.fullscreenItems(snapshot: snapshot, fullscreenSpaces: [], pinnedBundleIDs: []).count, 0)
+    h.eq(DockModel.fullscreenItems(snapshot: SpaceSnapshot(activeSpaceID: 1, windows: []),
+                                  fullscreenSpaces: full, pinnedBundleIDs: []).count, 0)
+}
+
+h.test("fullscreen target revalidation rejects wrong process, app and ordinary window") {
+    let display = DisplaySpaceInfo(displayUUID: "full", bounds: .zero, currentSpaceID: 10,
+                                   currentSpaceUUID: "full-space", isActive: false, isFullscreen: true)
+    let provider = FakeProvider(snap: SpaceSnapshot(activeSpaceID: 1, windows: [
+        win(2, 100, bundle: "app", spaces: [10]), win(3, 100, bundle: "app", spaces: [1])
+    ]), displaysList: [display])
+    let launcher = Launcher(provider: provider, config: .defaults, warn: { _ in })
+    let target = AppTarget(bundleID: "app", name: "App")
+    h.ok(try launcher.fullscreenWindow(windowID: 2, pid: 100, target: target) != nil)
+    h.ok(try launcher.fullscreenWindow(windowID: 2, pid: 200, target: target) == nil)
+    h.ok(try launcher.fullscreenWindow(windowID: 2, pid: 100, target: AppTarget(bundleID: "other", name: "App")) == nil)
+    h.ok(try launcher.fullscreenWindow(windowID: 3, pid: 100, target: target) == nil)
+    h.ok(try launcher.fullscreenWindow(windowID: 99, pid: 100, target: target) == nil)
+}
+
+h.test("any desktop pin excludes an application from shared fullscreen items") {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let pins = PinStore(url: directory.appendingPathComponent("pins.json"))
+    pins.pin("local", onSpace: "hidden-space")
+    pins.pinEverywhere("global")
+    pins.toggleEverywhereException("global", onSpace: "current")
+    h.eq(pins.allPinnedBundleIDs(), Set(["local", "global"]))
+}
+
+h.test("running and window presence remain independent through app lifecycle") {
+    let alive = DockApp(bundleID: "app", name: "App", pid: 100, windowCount: 0)
+    h.ok(alive.isRunning && !alive.hasOpenWindows)
+    let elsewhere = alive.withOpenWindows(true)
+    h.ok(elsewhere.isRunning && elsewhere.hasOpenWindows && elsewhere.windowCount == 0)
+    let pinned = DockApp(bundleID: "app", name: "App", pid: nil, windowCount: 0, isPinnedHere: true)
+    h.ok(pinned.isPinned && !pinned.isRunning && !pinned.hasOpenWindows)
+    h.ok(pinned.withRunningPID(100).isRunning && !pinned.withRunningPID(100).hasOpenWindows)
+}
+
+
+
 h.test("only current-Space apps are included") {
     let snap = SpaceSnapshot(activeSpaceID: 1, windows: [
         win(10, 100, name: "Firefox", bundle: "org.mozilla.firefox", spaces: [1]),

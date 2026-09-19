@@ -30,14 +30,15 @@ import SpaceKit
     typealias Completion = (CGWindowID, String?, NSImage?, String?) -> Void
     private struct Job {
         let windows: [WindowInfo]
+        let allowOffscreen: Bool
         let completion: Completion
     }
     private var worker: Task<Void, Never>?
     private var pending: Job?
 
-    /// 每次展开取一次列表、每个普通可见窗口取一帧；最新请求替换尚未开始的请求。
-    func capture(_ windows: [WindowInfo], completion: @escaping Completion) {
-        pending = Job(windows: windows, completion: completion)
+    /// 每次展开取一帧；共享全屏条目允许离屏捕获，普通条目保留可见性限制。
+    func capture(_ windows: [WindowInfo], allowOffscreen: Bool = false, completion: @escaping Completion) {
+        pending = Job(windows: windows, allowOffscreen: allowOffscreen, completion: completion)
         worker?.cancel()
         startNext()
     }
@@ -73,8 +74,12 @@ import SpaceKit
                     job.completion(info.windowID, nil, nil, "Window preview unavailable")
                     continue
                 }
-                guard !info.isMinimized, !info.isHidden, window.isOnScreen else {
+                guard !info.isMinimized, !info.isHidden else {
                     job.completion(info.windowID, window.title, nil, "Window is minimized or hidden")
+                    continue
+                }
+                guard window.isOnScreen || job.allowOffscreen else {
+                    job.completion(info.windowID, window.title, nil, "Window is on another desktop; click to focus")
                     continue
                 }
                 let width = max(1, window.frame.width), height = max(1, window.frame.height)
@@ -83,6 +88,7 @@ import SpaceKit
                 config.width = max(1, Int(width * scale))
                 config.height = max(1, Int(height * scale))
                 config.showsCursor = false
+                config.ignoreGlobalClipSingleWindow = job.allowOffscreen // 全屏所在 Space 不可见时仍保留完整窗口内容。
                 do {
                     let image = try await SCScreenshotManager.captureImage(
                         contentFilter: SCContentFilter(desktopIndependentWindow: window), configuration: config)
@@ -91,6 +97,19 @@ import SpaceKit
                                    NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height)), nil)
                 } catch {
                     guard !Task.isCancelled else { return }
+                    if job.allowOffscreen && !window.isOnScreen {
+                        let outputWidth = config.width, outputHeight = config.height
+                        let fallback = await Task.detached(priority: .utility) {
+                            OffscreenWindowCapture.capture(windowID: info.windowID, pid: info.pid,
+                                                           width: outputWidth, height: outputHeight)
+                        }.value
+                        guard !Task.isCancelled else { return }
+                        if let fallback {
+                            job.completion(info.windowID, window.title,
+                                NSImage(cgImage: fallback, size: NSSize(width: fallback.width, height: fallback.height)), nil)
+                            continue
+                        }
+                    }
                     job.completion(info.windowID, window.title, nil, "Window preview unavailable")
                 }
             }

@@ -32,3 +32,12 @@ func _AXUIElementGetWindow(_ element: AXUIElement, _ outID: UnsafeMutablePointer
 
 /// current | others | user  →  "all spaces" mask for CGSCopySpacesForWindows.
 let kCGSSpaceAll: Int32 = 0x7
+
+/// 非当前桌面 AX 窗口引用的兼容入口，动态探测以便系统移除符号时安全失败。
+func remoteAXWindowToken(_ data: CFData) -> AXUIElement? {
+    typealias Create = @convention(c) (CFData) -> Unmanaged<AXUIElement>?
+    guard ProcessInfo.processInfo.operatingSystemVersion.majorVersion == 27,
+          ProcessInfo.processInfo.operatingSystemVersionString.contains("26A428"),
+          let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "_AXUIElementCreateWithRemoteToken") else { return nil }
+    return unsafeBitCast(symbol, to: Create.self)(data)?.takeRetainedValue()
+}

@@ -297,14 +297,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let reply = UnsafeTransfer(completion)
             let includeHidden = Preferences.shared.showHiddenWindows
             self.launcherQueue.async {
-                let windows = try? launcher.value.previewWindows(pid: pid, bundleID: app.bundleID,
-                    displayUUID: displayUUID, spaceUUID: space, includeHidden: includeHidden)
+                let windows: [WindowInfo]?
+                if app.isFullscreenItem, let id = app.windowID {
+                    windows = (try? launcher.value.fullscreenWindow(windowID: id, pid: pid, target: app.target)).map { [$0] }
+                } else {
+                    windows = try? launcher.value.previewWindows(pid: pid, bundleID: app.bundleID,
+                        displayUUID: displayUUID, spaceUUID: space, includeHidden: includeHidden)
+                }
                 DispatchQueue.main.async { reply.value(windows) }
             }
         }
         dock.onPreviewSelect = { [weak self] app, windowID, space in
             guard let pid = app.pid else { return }
             self?.runLauncher {
+                if app.isFullscreenItem {
+                    _ = try? $0.focusFullscreenWindow(windowID: windowID, pid: pid, target: app.target)
+                    return
+                }
                 _ = try? $0.focusPreviewWindow(windowID: windowID, pid: pid, target: app.target,
                                                displayUUID: displayUUID, spaceUUID: space)
             }
@@ -318,6 +327,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let bounds = self.bounds(forDisplay: displayUUID)
             let dockSpace = self.currentSpaceID(forDisplay: displayUUID)
             self.runLaunch(target: app.target) { launcher in
+                if app.isFullscreenItem, !forceNew, let windowID = app.windowID, let pid = app.pid {
+                    return try? launcher.focusFullscreenWindow(windowID: windowID, pid: pid, target: app.target)
+                }
                 if let windowID = app.windowID, let pid = app.pid {
                     return try? launcher.dockClickWindow(windowID: windowID, pid: pid,
                                                          target: app.target, forceNew: forceNew,
@@ -797,6 +809,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // window-less treatments (reaping idle instances, and the window-less dock
         // items). Computed once here rather than in each helper.
         let pidsWithWindows = Set(snapshot.windows.map(\.pid))
+        let bundlesWithWindows = Set(snapshot.windows.compactMap(\.bundleID))
         reapWindowlessInstances(pidsWithWindows: pidsWithWindows)
         let displays = provider.displays()
         displaySpaces = displays
@@ -849,6 +862,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // "Show hidden windows": when off, drop ⌘-hidden apps' windows before
         // building window entries; its running application remains in its owned desktop.
         let displaySnapshot = prefs.showHiddenWindows ? snapshot : snapshot.droppingHiddenWindows()
+        let fullscreenItems = DockModel.fullscreenItems(snapshot: displaySnapshot,
+            fullscreenSpaces: provider.fullscreenSpaceIDs(), pinnedBundleIDs: pins.allPinnedBundleIDs())
+        let sharedWindowIDs = Set(fullscreenItems.flatMap(\.windowIDs))
+        let sharedPIDs = Set(fullscreenItems.compactMap(\.pid))
+        let localSnapshot = SpaceSnapshot(activeSpaceID: displaySnapshot.activeSpaceID,
+            windows: displaySnapshot.windows.filter { !sharedWindowIDs.contains($0.windowID) },
+            runningBundleIDs: displaySnapshot.runningBundleIDs)
         // "Windows" feature: per-window icons, and/or the wide window-title mode
         // (which is also one item per window). Both expand the app list per window.
         let options = DockRefresher.DisplayOptions(
@@ -896,7 +916,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             dock.applyFullscreenState(info.isFullscreen)
             let display = DockRefresher.displayApps(
                 onDisplay: displayBounds,
-                snapshot: displaySnapshot,
+                snapshot: localSnapshot,
                 // This display's visible Space, so a window minimized on another
                 // desktop of the same display doesn't leak into this bar (it's
                 // off-screen-but-real, hence otherwise counted purely by geometry).
@@ -909,12 +929,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 includeLauncher: prefs.appLauncherEnabled,
                 windowlessApps: ownedApps.filter {
                     guard let pid = $0.pid else { return false }
-                    return windowlessOwnership.contains(pid, scope: ownershipScope(uuid, info.currentSpaceUUID))
+                    return !sharedPIDs.contains(pid)
+                        && windowlessOwnership.contains(pid, scope: ownershipScope(uuid, info.currentSpaceUUID))
                 },
                 options: options,
                 nameForBundleID: AppDelegate.appName(for:),
                 titleForWindow: titleReader.title(windowID:pid:)).map { app in
-                    app.isPinned ? app.withRunningPID(app.pid ?? app.bundleID.flatMap { runningPIDs[$0] }) : app
+                    let running = app.isPinned ? app.withRunningPID(app.pid ?? app.bundleID.flatMap { runningPIDs[$0] }) : app
+                    return running.withOpenWindows(running.isRunning && (running.bundleID.map(bundlesWithWindows.contains)
+                        ?? running.pid.map(pidsWithWindows.contains) ?? false))
+                } + fullscreenItems.map { app in
+                    guard options.shouldLabel(app.windowCount), let id = app.windowID, let pid = app.pid else { return app }
+                    return app.withTitle(titleReader.title(windowID: id, pid: pid))
                 }
             // Flag the bar standing for the forefront window (matched by the same
             // window id the title attach uses) so the panel can bold it. nil id —

@@ -65,6 +65,35 @@ enum WindowAX {
         firstWindow(windowID: windowID, in: windows(of: pid))
     }
 
+    /// 仅明确点击全屏窗口时补查 AXWindows 漏项；限定 PID、AXWindow 根节点和窗口 ID。
+    /// token 布局参照 AltTab：pid/零/coco/元素编号；最多 250ms，不从鼠标或刷新回调调用。
+    static func fullscreenWindow(windowID: CGWindowID, pid: pid_t) -> AXUIElement? {
+        if let known = axWindow(windowID: windowID, pid: pid) { return known }
+        guard isTrusted, let token = CFDataCreateMutable(kCFAllocatorDefault, 20) else { return nil }
+        CFDataSetLength(token, 20)
+        guard let bytes = CFDataGetMutableBytePtr(token) else { return nil }
+        memset(bytes, 0, 20)
+        var process = pid.littleEndian
+        var magic = UInt32(0x636f636f).littleEndian
+        memcpy(bytes, &process, 4)
+        memcpy(bytes + 8, &magic, 4)
+        let deadline = ProcessInfo.processInfo.systemUptime + 0.25
+        for index in UInt64(0)..<65_536 {
+            var identifier = index.littleEndian
+            memcpy(bytes + 12, &identifier, 8)
+            if let candidate = remoteAXWindowToken(token) {
+                AXUIElementSetMessagingTimeout(candidate, 0.05) // 单次 IPC 也受限，避免无响应应用拖住点击队列。
+                if cgWindowID(of: candidate) == windowID {
+                    var role: CFTypeRef?
+                    if AXUIElementCopyAttributeValue(candidate, kAXRoleAttribute as CFString, &role) == .success,
+                       (role as? String) == kAXWindowRole { return candidate }
+                }
+            }
+            if ProcessInfo.processInfo.systemUptime >= deadline { break }
+        }
+        return nil
+    }
+
     static func frame(of window: AXUIElement) -> CGRect? {
         var posRef: CFTypeRef?
         var sizeRef: CFTypeRef?
