@@ -166,6 +166,12 @@ final class Preferences: ObservableObject {
         static let dockScreensMode = "dockScreensMode"
         static let dockScreenIDs = "dockScreenIDs"
         static let barMaterial = "barMaterial"
+        static let dockBackground = "dockBackground"
+        static let dockOpacity = "dockOpacity"
+        static let glassTransparency = "glassTransparency"
+        static let glassHighlightStrength = "glassHighlightStrength"
+        static let glassHighlightWidth = "glassHighlightWidth"
+        static let automaticTitleColor = "automaticTitleColor"
         static let warningsEnabled = "warningsEnabled"
         static let warningMode = "warningMode"
         static let hudPosition = "hudPosition"
@@ -260,6 +266,11 @@ final class Preferences: ObservableObject {
             // unaffected — that's just one dock, exactly as before).
             K.dockScreensMode: DockScreensMode.allScreens.rawValue,
             K.barMaterial: BarMaterial.hud.rawValue,
+            K.automaticTitleColor: true, // 标题默认使用系统语义色，跟随玻璃明暗。
+            K.glassHighlightStrength: 1.0, // 0–2 强度，默认保留当前高光；0 关闭。
+            K.glassHighlightWidth: 1.0, // 0.25–3 原生高光宽度参数，默认 1。
+            K.glassTransparency: 0.65, // 0–1 背景透光增强；默认减弱 65% 模糊和底色。
+            K.dockOpacity: 1.0, // 背景强度 0…1；不影响图标，默认保持原生玻璃强度。
             K.warningsEnabled: true,
             K.warningMode: WarningMode.normal.rawValue,
             K.hudPosition: HUDPosition.top.rawValue,
@@ -399,6 +410,36 @@ final class Preferences: ObservableObject {
         case .selectedScreens: return dockScreenIDs.contains(displayUUID)
         }
     }
+    /// 材质缺省兼容旧 solid 配置，避免已有纯色背景变成玻璃。
+    var dockBackground: DockBackground {
+        get { raw(K.dockBackground, barMaterial == .solid ? .solid : .glass) }
+        set { setRaw(newValue, K.dockBackground) }
+    }
+    /// 明暗与材质分离；写入前固定旧材质，避免纯色配置因切换明暗而丢失。
+    var glassTone: GlassTone {
+        get { GlassTone(rawValue: barMaterial.rawValue) ?? .automatic }
+        set {
+            let background = dockBackground
+            dockBackground = background
+            barMaterial = BarMaterial(rawValue: newValue.rawValue) ?? .hud
+        }
+    }
+    var glassHighlightStrength: Double {
+        get { min(2, max(0, dbl(K.glassHighlightStrength))) }
+        set { setDbl(min(2, max(0, newValue)), K.glassHighlightStrength) }
+    }
+    var glassHighlightWidth: Double {
+        get { min(3, max(0.25, dbl(K.glassHighlightWidth))) }
+        set { setDbl(min(3, max(0.25, newValue)), K.glassHighlightWidth) }
+    }
+    var glassTransparency: Double {
+        get { min(1, max(0, dbl(K.glassTransparency))) }
+        set { setDbl(min(1, max(0, newValue)), K.glassTransparency) }
+    }
+    var dockOpacity: Double {
+        get { min(1, max(0, dbl(K.dockOpacity))) }
+        set { setDbl(min(1, max(0, newValue)), K.dockOpacity) }
+    }
     var barMaterial: BarMaterial { get { raw(K.barMaterial, .hud) } set { setRaw(newValue, K.barMaterial) } }
     var warningMode: WarningMode { get { raw(K.warningMode, .normal) } set { setRaw(newValue, K.warningMode) } }
     var hudPosition: HUDPosition { get { raw(K.hudPosition, .top) } set { setRaw(newValue, K.hudPosition) } }
@@ -525,6 +566,10 @@ final class Preferences: ObservableObject {
     /// Color of the window-title text. Stored as sRGB components `"r,g,b,a"` — a
     /// plain, human-readable string in the JSON; defaults to white. Used by the
     /// wide label.
+    var automaticTitleColor: Bool {
+        get { bln(K.automaticTitleColor) }
+        set { setBln(newValue, K.automaticTitleColor) }
+    }
     var windowLabelTextColor: NSColor {
         get { color(K.windowLabelColor, default: Preferences.defaultWindowLabelColor) }
         set { setColor(newValue, K.windowLabelColor) }

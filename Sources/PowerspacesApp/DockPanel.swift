@@ -44,14 +44,11 @@ final class DockPanel: NSPanel {
     /// color editor (color + opacity, with its own reset-to-default).
     var onEditDockColor: (() -> Void)?
 
+    private let opticalInset: CGFloat = 6 // 给原生玻璃高光与阴影预留绘制空间。
     private let container = DockDropView()
     private let stack = NSStackView()
-    private let effect = NSVisualEffectView()
-    /// A non-interactive color wash over the blur — the dock's tint. When the dock
-    /// is tinted its layer holds the chosen color and `effect`'s opacity is dropped
-    /// to the tint's alpha, so the *whole* bar (blur included) fades with the
-    /// opacity — a 0% opacity bar is fully transparent, not a grey blur. Sits above
-    /// the blur but below the icon stack, so only the bar background is tinted.
+    private let effect = GlassSurfaceView(frame: .zero)
+    /// 旧系统的染色与降低透明度覆盖层；Liquid Glass 使用原生 tintColor。
     private let tintOverlay = PassthroughView()
     /// The persistent UUID of the desktop the bar is currently showing on, set by
     /// `AppDelegate` so the per-desktop dock color override can be looked up. Re-tints
@@ -96,6 +93,7 @@ final class DockPanel: NSPanel {
     /// True while an icon is mid-drag. Suppresses the background poll's rebuilds
     /// so the buttons aren't torn out from under the drag. (Internal, not private,
     /// so the auto-hide extension's `hide()` can defer while a drag is in flight.)
+    var isContextMenuOpen = false // 菜单打开时保持宿主面板与按钮稳定。
     var isReordering = false
     /// True while an external .app is being dragged over the bar (a slot is
     /// open). Like `isReordering`, this freezes the poll's rebuilds so the open
@@ -154,10 +152,15 @@ final class DockPanel: NSPanel {
         hidesOnDeactivate = false
 
         let prefs = Preferences.shared
+        effect.dockMode = true
+        effect.backgroundTransparency = prefs.glassTransparency
+        effect.highlightStrength = prefs.glassHighlightStrength
+        effect.highlightWidth = prefs.glassHighlightWidth
         effect.material = prefs.barMaterial.material
-        effect.state = .active
+        effect.solid = prefs.dockBackground == .solid
+        if #available(macOS 26.0, *) { hasShadow = effect.solid } // 玻璃使用自身阴影，避免双重黑边。
         effect.wantsLayer = true
-        effect.layer?.cornerRadius = CGFloat(prefs.cornerRadius)
+        effect.cornerRadius = CGFloat(prefs.cornerRadius)
         effect.translatesAutoresizingMaskIntoConstraints = false
         applyDockOutline()
 
@@ -178,14 +181,14 @@ final class DockPanel: NSPanel {
         // own opacity (a subview would inherit that fade and double up).
         tintOverlay.translatesAutoresizingMaskIntoConstraints = false
         tintOverlay.wantsLayer = true
-        container.addSubview(tintOverlay)
+        effect.installTintOverlay(tintOverlay)
         NSLayoutConstraint.activate([
             tintOverlay.leadingAnchor.constraint(equalTo: effect.leadingAnchor),
             tintOverlay.trailingAnchor.constraint(equalTo: effect.trailingAnchor),
             tintOverlay.topAnchor.constraint(equalTo: effect.topAnchor),
             tintOverlay.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
         ])
-        container.addSubview(stack)
+        effect.glassContent.addSubview(stack) // 图标归属原生 contentView，保留原有几何约束。
         // The blur (visible bar) hugs the window's OUTER edge — the screen edge the
         // bar sits against — with all hover headroom on the inner side; its cross
         // position and size are set per orientation in `applyBarFrame`. The icon
@@ -211,8 +214,14 @@ final class DockPanel: NSPanel {
     /// `update` picks up new icon sizes / dimming too.
     func applyAppearance() {
         let prefs = Preferences.shared
+        effect.dockMode = true
+        effect.backgroundTransparency = prefs.glassTransparency
+        effect.highlightStrength = prefs.glassHighlightStrength
+        effect.highlightWidth = prefs.glassHighlightWidth
         effect.material = prefs.barMaterial.material
-        effect.layer?.cornerRadius = CGFloat(prefs.cornerRadius)
+        effect.solid = prefs.dockBackground == .solid
+        if #available(macOS 26.0, *) { hasShadow = effect.solid } // 玻璃使用自身阴影，避免双重黑边。
+        effect.cornerRadius = CGFloat(prefs.cornerRadius)
         applyDockOutline()
         applyDockTint() // tint + corner radius (default, override, or reset may have changed)
         stack.spacing = CGFloat(prefs.iconSpacing)
@@ -230,35 +239,40 @@ final class DockPanel: NSPanel {
         effect.layer?.borderColor = prefs.dockOutlineColor.cgColor
     }
 
-    /// Paint the dock's background tint for the current desktop. When the dock is
-    /// tinted (a per-desktop override, or the default tint switched on) the bar
-    /// becomes the chosen color and `effect`'s opacity is set to that color's alpha,
-    /// so the opacity fades the *whole* bar — the frosted blur included — and 0%
-    /// opacity is fully transparent rather than a grey blur. Untinted, the bar shows
-    /// its plain material at full opacity. The overlay tracks the bar's corner radius
-    /// so the tint stays inside the rounded bar.
+    /// 按当前桌面染色；透明度控制整个背景，降低透明度时保持完全不透明。
     private func applyDockTint() {
         let prefs = Preferences.shared
+        effect.tintColor = prefs.isDockTinted(forSpace: spaceUUID)
+            ? prefs.effectiveDockTint(forSpace: spaceUUID) : nil
         tintOverlay.layer?.cornerRadius = CGFloat(prefs.cornerRadius)
         tintOverlay.layer?.masksToBounds = true
         // Reduce Transparency: cover the blur with a solid fill so the bar reads
         // fully opaque. Use the user's tint colour at full opacity if they set one,
         // else the standard window background.
         if SystemDisplay.reduceTransparency {
-            effect.alphaValue = 1
+            effect.opacity = prefs.dockOpacity
             let base = prefs.isDockTinted(forSpace: spaceUUID)
                 ? prefs.effectiveDockTint(forSpace: spaceUUID)
-                : NSColor.windowBackgroundColor
-            tintOverlay.layer?.backgroundColor = (base.usingColorSpace(.sRGB) ?? base)
-                .withAlphaComponent(1).cgColor
+                : prefs.glassTone == .darker ? NSColor.black
+                : prefs.glassTone == .lighter ? NSColor.white : NSColor.windowBackgroundColor
+            if #available(macOS 26.0, *) {
+                tintOverlay.layer?.backgroundColor = NSColor.clear.cgColor // 原生容器已处理不透明回退。
+            } else {
+                tintOverlay.layer?.backgroundColor = (base.usingColorSpace(.sRGB) ?? base)
+                    .withAlphaComponent(1).cgColor
+            }
             return
         }
         if prefs.isDockTinted(forSpace: spaceUUID) {
             let color = prefs.effectiveDockTint(forSpace: spaceUUID)
-            effect.alphaValue = color.alphaComponent
-            tintOverlay.layer?.backgroundColor = color.cgColor
+            effect.opacity = prefs.dockOpacity * color.alphaComponent
+            if #available(macOS 26.0, *) {
+                tintOverlay.layer?.backgroundColor = NSColor.clear.cgColor // 原生染色不遮盖折射。
+            } else {
+                tintOverlay.layer?.backgroundColor = color.withAlphaComponent(color.alphaComponent * prefs.dockOpacity).cgColor
+            }
         } else {
-            effect.alphaValue = 1
+            effect.opacity = prefs.dockOpacity
             tintOverlay.layer?.backgroundColor = NSColor.clear.cgColor
         }
     }
@@ -317,30 +331,30 @@ final class DockPanel: NSPanel {
         stackAlongEnd?.isActive = false
         stackCrossCenter?.isActive = false
         if vertical {
-            effectAlong = effect.heightAnchor.constraint(equalTo: container.heightAnchor)
+            effectAlong = effect.heightAnchor.constraint(equalTo: container.heightAnchor, constant: -2 * opticalInset)
             effectAlongCenter = effect.centerYAnchor.constraint(equalTo: container.centerYAnchor)
             effectThickness = effect.widthAnchor.constraint(equalToConstant: barThickness())
             // Stack fills the window top→bottom (along the bar) and centers on the
             // bar's width, so its icons sit centered on the visible bar.
-            stackAlongStart = stack.topAnchor.constraint(equalTo: container.topAnchor)
-            stackAlongEnd = stack.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+            stackAlongStart = stack.topAnchor.constraint(equalTo: container.topAnchor, constant: opticalInset)
+            stackAlongEnd = stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -opticalInset)
             stackCrossCenter = stack.centerXAnchor.constraint(equalTo: effect.centerXAnchor)
         } else {
-            effectAlong = effect.widthAnchor.constraint(equalTo: container.widthAnchor)
+            effectAlong = effect.widthAnchor.constraint(equalTo: container.widthAnchor, constant: -2 * opticalInset)
             effectAlongCenter = effect.centerXAnchor.constraint(equalTo: container.centerXAnchor)
             effectThickness = effect.heightAnchor.constraint(equalToConstant: barThickness())
-            stackAlongStart = stack.leadingAnchor.constraint(equalTo: container.leadingAnchor)
-            stackAlongEnd = stack.trailingAnchor.constraint(equalTo: container.trailingAnchor)
+            stackAlongStart = stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: opticalInset)
+            stackAlongEnd = stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -opticalInset)
             stackCrossCenter = stack.centerYAnchor.constraint(equalTo: effect.centerYAnchor)
         }
         // Pin the bar to the window's OUTER edge so all hover headroom falls on the
         // inner side and the window (placed by `origin`) never crosses the screen's
         // outer edge onto a vertically-stacked neighbouring display.
         switch pos {
-        case .bottom: effectCross = effect.bottomAnchor.constraint(equalTo: container.bottomAnchor)
-        case .top:    effectCross = effect.topAnchor.constraint(equalTo: container.topAnchor)
-        case .left:   effectCross = effect.leadingAnchor.constraint(equalTo: container.leadingAnchor)
-        case .right:  effectCross = effect.trailingAnchor.constraint(equalTo: container.trailingAnchor)
+        case .bottom: effectCross = effect.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -opticalInset)
+        case .top:    effectCross = effect.topAnchor.constraint(equalTo: container.topAnchor, constant: opticalInset)
+        case .left:   effectCross = effect.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: opticalInset)
+        case .right:  effectCross = effect.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -opticalInset)
         }
         effectAlong?.isActive = true
         effectAlongCenter?.isActive = true
@@ -387,6 +401,8 @@ final class DockPanel: NSPanel {
         } else {
             size.height = windowCross
         }
+        size.width += 2 * opticalInset
+        size.height += 2 * opticalInset
         return padded(size)
     }
 
@@ -496,7 +512,7 @@ final class DockPanel: NSPanel {
     func update(apps: [DockApp], animateChanges: Bool = true) {
         // Don't rebuild out from under an in-progress drag (reorder or drag-in) —
         // we'll pick up the saved order on the refresh that follows the drop.
-        guard !isReordering, !isExternalDragging else { return }
+        guard !isContextMenuOpen, !isReordering, !isExternalDragging else { return }
         // An animation is mid-flight: remember the latest target and apply it on
         // completion rather than rebuilding the bar out from under it.
         if isAnimating { pendingApps = apps; return }
@@ -1114,18 +1130,17 @@ final class DockPanel: NSPanel {
         return text
     }
 
-    /// Lay a button out as a wide window-label item: a smaller app icon on the
-    /// left and the window's title in white to its right, truncated to fit. Falls
-    /// back to the app name when no title is available (e.g. AX not granted). The
-    /// active (forefront) window's title is drawn bold so it stands out among the
-    /// bars; the rest stay at the regular medium weight.
+    /// 输入应用及图标尺寸，创建加宽标题按钮；自动颜色独立合成，手动颜色沿用原配置。
+    /// 标题缺失时显示应用名，活动窗口加粗，超长标题截断。
     private func applyLabel(to button: DockButton, app: DockApp, side: CGFloat) {
         let text = app.title ?? app.name
         let weight: NSFont.Weight = app.isActive ? .bold : .medium
+        let font = NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: .callout).pointSize, weight: weight)
         button.attributedTitle = NSAttributedString(string: text, attributes: [
-            .foregroundColor: Preferences.shared.windowLabelTextColor,
-            .font: NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: .callout).pointSize, weight: weight),
+            .foregroundColor: Preferences.shared.automaticTitleColor ? NSColor.clear : Preferences.shared.windowLabelTextColor,
+            .font: font,
         ])
+        if Preferences.shared.automaticTitleColor { button.setAdaptiveTitle(text, font: font) }
         button.imagePosition = .imageLeading
         button.imageHugsTitle = true
         button.alignment = .left
@@ -1153,6 +1168,7 @@ final class DockPanel: NSPanel {
     /// Place the panel at its on-edge spot on `boundScreen`. Internal so the app
     /// delegate can re-place surviving docks after a display reconfiguration.
     func reposition() {
+        guard !isContextMenuOpen else { return }
         guard let screen = boundScreen else { return }
         // `placedOrigin` keeps a tucked-away (auto-hidden) bar off-screen, so a
         // content rebuild from the poll doesn't yank it back into view.

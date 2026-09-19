@@ -320,9 +320,24 @@ final class DockButton: NSButton {
         updateBoxLayer()
     }
 
+    private var adaptiveTitle: AdaptiveDockLabel?
+
+    /// 标题单独参与背景感知合成，保留按钮的点击、拖放、图标和布局。
+    func setAdaptiveTitle(_ text: String, font: NSFont) {
+        adaptiveTitle?.removeFromSuperview()
+        let label = AdaptiveDockLabel(text: text, font: font)
+        label.setAccessibilityElement(false) // 按钮自身已提供名称，避免重复朗读。
+        addSubview(label)
+        adaptiveTitle = label
+        needsLayout = true
+    }
+
     override func layout() {
         super.layout()
         updateBoxLayer() // bounds are only real once we've been laid out
+        if let adaptiveTitle, let cell {
+            adaptiveTitle.frame = cell.titleRect(forBounds: bounds)
+        }
     }
 
     // MARK: - Window-count badge

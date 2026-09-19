@@ -558,3 +558,45 @@
 "windows multiple" = "windows multiple";
 "“Dim not-running” fades pinned apps that aren't open; “Box running” frames open apps with a colored outline instead." = "“Dim not-running” fades pinned apps that aren't open; “Box running” frames open apps with a colored outline instead.";
 "↑↓←→ to select · Return to launch · ⌘Return for a new window · drag onto the bar to pin" = "↑↓←→ to select · Return to launch · ⌘Return for a new window · drag onto the bar to pin";
+
+"Liquid Glass (default)" = "Liquid Glass (default)";
+
+"Liquid Glass" = "Liquid Glass";
+
+"Follow system" = "Follow system";
+
+"Light" = "Light";
+
+"Dark" = "Dark";
+
+"Background material" = "Background material";
+
+"Choose glass or a solid background." = "Choose glass or a solid background.";
+
+"Background appearance" = "Background appearance";
+
+"Appearance is independent of the custom tint color." = "Appearance is independent of the custom tint color.";
+
+"Dock background opacity" = "Dock background opacity";
+
+
+
+"Only the background fades. At 100%, glass retains its native translucency. Reduce Transparency overrides this setting." = "Only the background fades. At 100%, glass retains its native translucency. Reduce Transparency overrides this setting.";
+
+"Glass tint strength" = "Glass tint strength";
+
+"Clear glass keeps its native refraction and edge highlights. Strength adjusts the selected tint; with system appearance and no custom color, glass follows macOS." = "Clear glass keeps its native refraction and edge highlights. Strength adjusts the selected tint; with system appearance and no custom color, glass follows macOS.";
+
+"Tint strength preserves glass highlights. Select Light, Dark, or a custom color to adjust it." = "Tint strength preserves glass highlights. Select Light, Dark, or a custom color to adjust it.";
+
+"Glass transparency" = "Glass transparency";
+"Higher values reduce background blur and fill, preserving icons and edge highlights. 0% restores the system material." = "Higher values reduce background blur and fill, preserving icons and edge highlights. 0% restores the system material.";
+"Background transparency uses an experimental macOS 27 adjustment. Unsupported systems fall back to native glass; Reduce Transparency takes priority." = "Background transparency uses an experimental macOS 27 adjustment. Unsupported systems fall back to native glass; Reduce Transparency takes priority.";
+
+"Automatic title color" = "Automatic title color";
+"Follow System uses the native glass appearance. With no custom tint, Tint Strength has no color to adjust; choose Light, Dark, or enable tinting." = "Follow System uses the native glass appearance. With no custom tint, Tint Strength has no color to adjust; choose Light, Dark, or enable tinting.";
+
+"Edge highlight strength" = "Edge highlight strength";
+"Edge highlight width" = "Edge highlight width";
+"Adjust both edges together. 0% turns highlights off; 100% is the default." = "Adjust both edges together. 0% turns highlights off; 100% is the default.";
+"Width relative to the default highlight. Independent of glass transparency." = "Width relative to the default highlight. Independent of glass transparency.";

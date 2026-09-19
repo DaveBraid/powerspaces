@@ -75,12 +75,51 @@ final class PreferencesWindowController: ActivatingWindowController {
     private init(strategies: StrategySettingsController) {
         super.init(title: "Powerspaces Preferences",
                    styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                   content: NSHostingController(rootView: PreferencesView(strategies: strategies)))
+                   content: SettingsGlassController(strategies: strategies))
+        window?.styleMask.insert(.fullSizeContentView) // 玻璃延伸至标题栏，内容遵循安全区域。
+        window?.isOpaque = false
+        window?.backgroundColor = .clear
+        window?.titlebarAppearsTransparent = true
+        window?.contentMinSize = NSSize(width: 720, height: 648)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    override func didClose() { PreferencesWindowController.shared = nil }
+    override func didClose() {
+        PreferencesWindowController.shared = nil
+        if DevelopmentTools.isPreview { NSApp.terminate(nil) } // 一并关闭静态示例程序坞。
+    }
+}
+
+/// 将设置内容交给原生玻璃承载，材质明暗与透光效果跟随系统。
+@MainActor
+private final class SettingsGlassController: NSViewController {
+    private let hosting: NSHostingController<PreferencesView>
+
+    /// 输入现有策略模型，创建共享玻璃及 SwiftUI 内容，不读取旧背景透明度。
+    init(strategies: StrategySettingsController) {
+        hosting = NSHostingController(rootView: PreferencesView(strategies: strategies))
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// 背景覆盖标题栏，前景按窗口安全区域布局；原生 contentView 管理玻璃适配。
+    override func loadView() {
+        let glass = GlassSurfaceView(frame: NSRect(x: 0, y: 0, width: 760, height: 680))
+        glass.settingsMode = true
+        glass.cornerRadius = 0 // 窗口自身负责外缘圆角。
+        view = glass
+        addChild(hosting)
+        hosting.view.translatesAutoresizingMaskIntoConstraints = false
+        glass.glassContent.addSubview(hosting.view)
+        NSLayoutConstraint.activate([
+            hosting.view.leadingAnchor.constraint(equalTo: glass.glassContent.safeAreaLayoutGuide.leadingAnchor),
+            hosting.view.trailingAnchor.constraint(equalTo: glass.glassContent.safeAreaLayoutGuide.trailingAnchor),
+            hosting.view.topAnchor.constraint(equalTo: glass.glassContent.safeAreaLayoutGuide.topAnchor),
+            hosting.view.bottomAnchor.constraint(equalTo: glass.glassContent.safeAreaLayoutGuide.bottomAnchor),
+        ])
+    }
 }
 
 /// Reference-counts the windows that need the app to behave as a regular

@@ -62,6 +62,25 @@ enum DockScreensMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// 玻璃是背景材质；明暗是独立属性，旧配置值继续兼容。
+enum DockBackground: String, CaseIterable, Identifiable {
+    case glass, solid
+    var id: String { rawValue }
+    var label: String { L10n.string(self == .glass ? "Liquid Glass" : "Solid") }
+}
+
+enum GlassTone: String, CaseIterable, Identifiable {
+    case automatic, lighter, darker
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .automatic: return L10n.string("Follow system")
+        case .lighter: return L10n.string("Light")
+        case .darker: return L10n.string("Dark")
+        }
+    }
+}
+
 enum BarMaterial: String, CaseIterable, Identifiable {
     case hud, darker, lighter, solid
     var id: String { rawValue }
@@ -75,7 +94,9 @@ enum BarMaterial: String, CaseIterable, Identifiable {
     }
     var label: String {
         switch self {
-        case .hud: return L10n.string("HUD (default)")
+        case .hud:
+            if #available(macOS 26.0, *) { return L10n.string("Liquid Glass (default)") }
+            return L10n.string("HUD (default)")
         case .darker: return L10n.string("Darker")
         case .lighter: return L10n.string("Lighter")
         case .solid: return L10n.string("Solid")

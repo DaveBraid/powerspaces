@@ -29,12 +29,14 @@ VERSION="${VERSION:-$(cat "$ROOT/VERSION" 2>/dev/null || echo 0.0.0)}"
 reclaim_build_dir "$ROOT/.build"
 
 echo "› Building release binary…"
-swift build -c release --product "$EXEC_NAME"
-BIN_DIR="$(swift build -c release --show-bin-path)" # 兼容新旧 SwiftPM 的产物目录。
+# 当前 swiftbuild 后端将 SDK 错记为部署版本 14，导致系统控件回退旧外观。
+# native 后端保留真实 SDK 版本；升级工具链后先检查 LC_BUILD_VERSION 再移除此兼容。
+swift build --build-system native -c release --product "$EXEC_NAME"
+BIN_DIR="$(swift build --build-system native -c release --show-bin-path)" # 兼容新旧 SwiftPM 的产物目录。
 BIN="$BIN_DIR/$EXEC_NAME"
 
 echo "› Building powerspaces CLI (bundled for the Raycast setup)…"
-swift build -c release --product powerspaces
+swift build --build-system native -c release --product powerspaces
 CLI_BIN="$BIN_DIR/powerspaces"
 
 echo "› Rendering AppIcon.icns…"

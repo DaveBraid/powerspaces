@@ -4,7 +4,11 @@
 
 # powerspaces
 
-**本 fork：macOS 27 中文适配。** [语言设置、自行构建与 Homebrew 切换说明](docs/zh-CN.md)。当前仅进行汉化，保留上游外观和窗口行为。
+**This fork:** macOS 27, English / 简体中文, and native Liquid Glass. [中文 README](README.zh-CN.md) · [Build and installation guide (中文)](docs/zh-CN.md).
+
+Dock glass transparency is adjustable independently of tint strength. On macOS 27, PS reduces the native glass filter's blur and face fill without fading icons, and strengthens its native edge highlights. At 0%, background blur and fill return to system values; edge enhancement remains. Automatic window-title colors adapt to the background under each title, with manual colors still available in Settings → Windows.
+
+These enhancements use isolated, capability-checked **private macOS 27 rendering APIs**. Unsupported versions fall back to native glass and semantic text colors; system Reduce Transparency takes priority. OS updates may require adaptation. No screen capture, background sampling timer, or global system appearance changes are used. Settings-window glass follows the system.
 
 **Make macOS Spaces behave like Microsoft Windows virtual desktops.** Every
 desktop is isolated, with its own dock, and no more getting *yanked* to a different
@@ -239,3 +243,7 @@ Copyright © Sebastian Panman de Wit, 2026
 Licensed under the [GNU General Public License v3.0](LICENSE): free to use, study,
 share, and modify. Any distributed work that builds on Powerspaces must stay under
 the same GPL-3.0 license and make its source available.
+
+Edge highlights can be adjusted live in Settings → Dock → Layout: strength 0–200% (0 disables it), width 0.25–3×. Defaults remain 100% and 1×; both edges change together, independently of transparency.
+
+**Known highlight limitation:** the current sliders modify background-filter highlights. AppKit suppresses the separate foreground highlight when the window becomes inactive, so these sliders currently cannot reproduce the native Dock rim in PS’s nonactivating panel. The activation-state cause has been reproduced; its rendering fix is pending.

@@ -8,7 +8,11 @@ import SpaceKit
 // Right-click context menu for dock icons — extracted from DockPanel.swift to
 // keep that file manageable (review finding H15). Uses only DockPanel's internal
 // callbacks (onPinHere, onSetStrategy, …); no other DockPanel internals are touched.
-extension DockPanel {
+extension DockPanel: NSMenuDelegate {
+    /// 菜单跟踪期间冻结会移动或重建锚点的更新，关闭后由正常刷新恢复。
+    func menuWillOpen(_ menu: NSMenu) { isContextMenuOpen = true }
+    func menuDidClose(_ menu: NSMenu) { isContextMenuOpen = false }
+
 
     /// Pairs an app with a strategy for a context-menu item's representedObject.
     private final class StrategyChoice {
@@ -21,6 +25,7 @@ extension DockPanel {
 
     func showMenu(for app: DockApp, from button: NSButton) {
         let menu = NSMenu()
+        menu.delegate = self
         // The way back in when the menu-bar item is set to Hidden: a right-click on
         // any icon reaches Preferences. Shown at the very top, and only while the
         // icon is hidden — with it visible, that's the entry point, so we omit this.
@@ -123,17 +128,14 @@ extension DockPanel {
     /// when the menu-bar item is set to Hidden — that's then the only way in.
     func makeDockMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.delegate = self
         // Preferences only when the menu-bar icon is Hidden — see comment below.
         if let prefs = preferencesItemIfMenuBarHidden() {
             menu.addItem(prefs)
         }
         addDockColorItems(to: menu)
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: L10n.string("Quit Powerspaces"),
-                              action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
-        quit.target = NSApp
-        quit.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: nil)
-        menu.addItem(quit)
+        menu.addItem(ApplicationActions.shared.quitMenuItem(keyEquivalent: ""))
         return menu
     }
 

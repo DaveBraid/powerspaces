@@ -558,3 +558,45 @@
 "windows multiple" = "窗口 多个 windows multiple";
 "“Dim not-running” fades pinned apps that aren't open; “Box running” frames open apps with a colored outline instead." = "“调暗未运行应用”会淡化未打开的固定图标；“框选运行中应用”会为已打开的应用绘制彩色边框。";
 "↑↓←→ to select · Return to launch · ⌘Return for a new window · drag onto the bar to pin" = "方向键选择 · Return 打开 · ⌘Return 新建窗口 · 拖到程序坞以固定";
+
+"Liquid Glass (default)" = "液态玻璃（默认）";
+
+"Liquid Glass" = "液态玻璃";
+
+"Follow system" = "跟随系统";
+
+"Light" = "浅色";
+
+"Dark" = "深色";
+
+"Background material" = "背景材质";
+
+"Choose glass or a solid background." = "选择玻璃或纯色背景。";
+
+"Background appearance" = "背景明暗";
+
+"Appearance is independent of the custom tint color." = "明暗模式独立于自定义颜色。";
+
+"Dock background opacity" = "程序坞背景不透明度";
+
+
+
+"Only the background fades. At 100%, glass retains its native translucency. Reduce Transparency overrides this setting." = "只淡化背景，不影响图标、文字和控件。100% 保留玻璃本身的半透明效果；系统“降低透明度”会覆盖此设置。";
+
+"Glass tint strength" = "玻璃着色强度";
+
+"Clear glass keeps its native refraction and edge highlights. Strength adjusts the selected tint; with system appearance and no custom color, glass follows macOS." = "清透玻璃保留原生折射与边缘高光。强度调节所选颜色；跟随系统且未自定颜色时，玻璃由 macOS 自动呈现。";
+
+"Tint strength preserves glass highlights. Select Light, Dark, or a custom color to adjust it." = "着色强度保留玻璃高光。选择浅色、深色或自定颜色后即可调节。";
+
+"Glass transparency" = "玻璃透光率";
+"Higher values reduce background blur and fill, preserving icons and edge highlights. 0% restores the system material." = "数值越大，背景模糊和底色越淡；图标和边缘高光保持不变。0% 恢复系统原生材质。";
+"Background transparency uses an experimental macOS 27 adjustment. Unsupported systems fall back to native glass; Reduce Transparency takes priority." = "透光率使用 macOS 27 实验性调节；系统不支持时回退原生玻璃。“降低透明度”优先。";
+
+"Automatic title color" = "自动适配标题颜色";
+"Follow System uses the native glass appearance. With no custom tint, Tint Strength has no color to adjust; choose Light, Dark, or enable tinting." = "“跟随系统”使用原生玻璃明暗。未设置着色时，“玻璃着色强度”无可调颜色；选择浅色、深色或启用程序坞着色后即可调节。";
+
+"Edge highlight strength" = "边缘高光强度";
+"Edge highlight width" = "边缘高光宽度";
+"Adjust both edges together. 0% turns highlights off; 100% is the default." = "同时调节两侧边缘高光。0% 关闭高光，100% 为默认强度。";
+"Width relative to the default highlight. Independent of glass transparency." = "相对于默认高光的宽度，独立于玻璃透光率。";

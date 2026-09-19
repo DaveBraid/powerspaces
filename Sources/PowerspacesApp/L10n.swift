@@ -44,6 +44,12 @@ enum L10n {
         }
     }
 
+    /// SwiftPM 的 native 后端会小写语言目录；兼容两种产物布局。
+    static func localizationPath(for language: AppLanguage) -> String? {
+        resourceBundle.path(forResource: language.rawValue, ofType: "lproj")
+            ?? resourceBundle.path(forResource: language.rawValue.lowercased(), ofType: "lproj")
+    }
+
     /// 按应用内选择查找完整文案；输入英文键，缺少翻译时返回原文。
     static func string(_ key: String) -> String {
         string(key, language: language)
@@ -51,7 +57,7 @@ enum L10n {
 
     /// 指定语言查找文案，供界面和资源校验复用；不改变进程当前语言。
     static func string(_ key: String, language: AppLanguage) -> String {
-        guard let path = resourceBundle.path(forResource: language.rawValue, ofType: "lproj"),
+        guard let path = localizationPath(for: language),
               let bundle = Bundle(path: path) else { return key }
         return bundle.localizedString(forKey: key, value: key, table: nil)
     }

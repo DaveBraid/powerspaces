@@ -112,7 +112,7 @@ extension DockPanel {
         guard autoHideActive, hideState == .shown else { return }
         // Mid-interaction: retry after the delay (a drag/animation can end without
         // a pointer move to re-arm us).
-        if isReordering || isExternalDragging || isAnimating { scheduleHide(); return }
+        if isContextMenuOpen || isReordering || isExternalDragging || isAnimating { scheduleHide(); return }
         // Pointer still over the bar / hot edge: don't hide, and don't re-arm — the
         // move that takes the pointer away will start a fresh countdown.
         if pointerIsOverBar() { cancelHideTimer(); return }

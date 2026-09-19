@@ -1,6 +1,6 @@
-# macOS 27 汉化版
+# macOS 27 中文与 Liquid Glass 适配
 
-本 fork 优先解决 macOS 多桌面操作的不确定性。本轮仅添加英文／简体中文支持，保留原有程序坞外观、窗口策略和默认行为。
+本 fork 优先解决 macOS 多桌面操作的不确定性。已添加英文／简体中文支持，并将程序坞与设置窗口升级为 Apple 原生 Liquid Glass；保留现有窗口策略和交互行为。
 
 ## 语言设置
 
@@ -14,15 +14,27 @@
 - 系统权限弹窗、系统错误详情及标准颜色选择器等由 macOS 控制语言，未必跟随应用内选择。应用包已附带中英文自动化权限说明。
 - 已显示的临时警告或系统模态弹窗不会在切换时重建；下次显示时使用新语言。
 
+## Liquid Glass
+
+- macOS 26 及以上使用 AppKit 的 `NSGlassEffectView`，由系统绘制玻璃折射、边缘和明暗适配；macOS 14–15 回退原有模糊材质。
+- **程序坞 → 布局** 分别设置“背景材质”（液态玻璃／纯色）、“背景明暗”（跟随系统／浅色／深色）、玻璃的“着色强度”或纯色的“背景不透明度”（0–100%）。材质与明暗不再混为一个选项，自定义颜色不会覆盖明暗模式。
+- 设置窗口与程序坞共用原生玻璃及 contentView 承载方式；设置窗口使用适合密集文字的 regular 材质，程序坞使用 clear 材质；设置窗口的材质效果跟随系统，不再提供独立透明度滑块，旧 `settingsOpacity` 字段不再使用。系统“降低透明度”优先。
+- **程序坞 → 布局 → 玻璃透光率**：macOS 27 上可独立减弱原生玻璃的模糊与底色，默认 65%；0% 恢复系统背景模糊与底色（原生边缘高光增强独立保留），100% 最大程度减弱背景。百分比表示减弱程度，并非测量得到的物理透射率。着色强度仍单独控制所选颜色。
+- 透光调节使用隔离的私有 `glassBackground` 滤镜参数，不修改图标与折射参数；边缘高光的宽度与强度单独增强，也不改系统 Liquid Glass 全局设置。仅在 macOS 27 且参数探测成功时生效，其他系统回退原生玻璃；系统“降低透明度”优先。系统更新后需重新验证。
+- 旧 `hud`／`lighter`／`darker`／`solid` 配置继续兼容；已有颜色 alpha 与强度共同控制着色；清透玻璃保留完整边缘光效，系统默认且未染色时禁用无作用的强度滑块。
+- 保留圆角、描边、透明度、每桌面颜色和四向停靠。图标独立于背景，不裁切悬停放大，不改变拖拽与自动隐藏。
+- 设置页隐藏滚动区域的底色，让玻璃背景可见；系统“降低透明度”启用时改用实色背景。
+- 只需预览外观时运行 `swift run --build-system native PowerspacesApp --preview-appearance`：静态示例程序坞与设置页使用临时配置，不启动正式桌面管理。正式安装更新仍按下文切换步骤操作。
+
 ## 构建与检查
 
 主要适配环境：macOS 27.0（26A428）、Apple Silicon、Swift 6.4 / macOS 27 SDK。最低部署要求仍为 macOS 14；这不代表每个系统版本均已实机验证。
 
 ```bash
 cd /Users/ethanlee/projects/powerspaces
-swift build
+swift build --build-system native
 swift run spacekit-tests
-swift run PowerspacesApp --check-localization
+swift run --build-system native PowerspacesApp --check-localization
 ./scripts/make-app.sh
 ```
 
@@ -33,7 +45,7 @@ swift run PowerspacesApp --check-localization
 只检查界面，无需卸载现有版本：
 
 ```bash
-swift run PowerspacesApp --preview-settings
+swift run --build-system native PowerspacesApp --preview-settings
 ```
 
 此模式只打开设置窗口，配置写入独立临时目录；不会启动正式的桌面管理、系统 Dock 隐藏或快捷键接管。不要在预览中执行安装、卸载、权限重置等系统操作；这些按钮仍是实际操作。关闭预览窗口后进程退出并清理临时配置。
@@ -75,6 +87,8 @@ open /Applications/Powerspaces.app
 
 保留配置目录即可恢复原有设置；上游会忽略新增的语言字段。必要时重新授予辅助功能权限。
 
+程序坞右键与状态栏的“退出 PowerSpaces”共用正常退出入口；菜单展开期间暂停会打断菜单的 Dock 更新。已实测程序坞菜单退出后进程结束，系统 Dock 与快捷键恢复继续由统一的应用退出回调处理。开发回归入口为 `swift run --build-system native PowerspacesApp --check-quit`。
+
 ## 后续维护
 
 - 英文和中文资源的键保持一致，动态内容使用完整句子和 `%@` 参数，不拼接译文片段。
@@ -82,10 +96,22 @@ open /Applications/Powerspaces.app
 - `InfoPlist.strings` 放在 `packaging/`，由打包脚本复制到主应用的语言目录。
 - 发布前同时验证打包后的 `Powerspaces.app/Contents/MacOS/Powerspaces --check-localization`，避免只验证开发目录里的资源。
 
-## 本轮验证记录（2026-09-18）
+## 本机自动应用约定
 
-- macOS 27.0 上完成 release 构建、应用打包和签名完整性校验。
-- 打包后的应用通过 559 条中英文资源及语言持久化检查。
-- `spacekit-tests`：247 项断言通过；真实 CGS 冒烟项因测试进程无法读取窗口服务器而跳过，未据此宣称跨桌面操作已实机验证。
-- 使用临时配置进行设置窗口实机检查：简体中文 → English → 简体中文即时切换、窗口标题与独立设置行刷新、英文界面输入“圆角”命中 `Corner radius`；截图检查了中英文布局。
-- 保留现有 Homebrew 安装，未执行卸载、安装替换或辅助功能授权变更。正式切换步骤见上文。
+用户已授权后续修改通过构建与必要检查后，默认更新 `/Applications/Powerspaces.app` 并重新启动。更新时正常退出旧进程、保留配置、将上一版备份到 `.build/install-backups/`，再替换并校验签名；不必每次重新执行 Homebrew 卸载。不自动修改辅助功能授权，Git 提交和推送仍按用户要求执行。
+
+## 外观开发与验证
+
+打包暂用 `--build-system native`，确认最终产物实际 SDK 为 27.0、最低部署版本为 14.0。设置页使用系统 Switch 控件。
+
+- `--check-appearance`：旧配置兼容、材质与明暗独立、着色边界和持久化、玻璃前景与不透明回退的点击和可见性，以及原生滤镜透光调节、原值恢复、系统重建后重新应用和高光／折射参数不变。
+- `--check-localization`：打包后的双语资源和语言持久化。
+- `--check-quit`：程序坞和状态栏共用退出入口、异步退出与重复操作合并。
+- `--preview-appearance`：独立设置窗口和静态示例程序坞，使用临时配置。
+- `--preview-glass`：对照同尺寸、同背景的 clear 玻璃，均使用 80% 透光增强，对照原生／增强高光及背景感知标题，不启动桌面管理。
+
+程序坞为光学效果预留 6 点边缘空间，使用玻璃自带阴影并启用 macOS 27 交互响应。设置窗口不启用整块背景的交互响应，控件维持系统行为。
+
+自动检查不能代替真实多屏、辅助功能、拖拽和自动隐藏的实机回归。重要经验统一维护于[开发经验](development-experience.md)。
+
+边缘高光可在“程序坞 → 布局”实时调节：强度 0–200%（0 关闭）、宽度 0.25–3×，默认 100%／1×。两侧一起变化；配置持久化，独立于透光率。

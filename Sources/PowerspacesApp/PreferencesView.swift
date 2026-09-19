@@ -92,21 +92,38 @@ struct PreferencesView: View {
             .padding(.top, 14)
             .padding(.bottom, 6)
             if query.trimmingCharacters(in: .whitespaces).isEmpty {
-                TabView(selection: $selectedTab) {
-                    dockTab.tabItem { Label(L10n.string("Dock"), systemImage: "dock.rectangle") }.tag(0)
-                    iconsTab.tabItem { Label(L10n.string("Icons"), systemImage: "square.grid.2x2") }.tag(1)
-                    effectsTab.tabItem { Label(L10n.string("Effects"), systemImage: "wand.and.stars") }.tag(2)
-                    windowsTab.tabItem { Label(L10n.string("Windows"), systemImage: "macwindow") }.tag(3)
-                    behaviorTab.tabItem { Label(L10n.string("Behavior"), systemImage: "gearshape") }.tag(4)
-                    strategyTab.tabItem { Label(L10n.string("New windows"), systemImage: "arrow.up.forward.app") }.tag(5)
-                    systemTab.tabItem { Label(L10n.string("System"), systemImage: "menubar.dock.rectangle") }.tag(6)
+                VStack(spacing: 8) {
+                    Picker("", selection: $selectedTab) {
+                        Text(L10n.string("Dock")).tag(0)
+                        Text(L10n.string("Icons")).tag(1)
+                        Text(L10n.string("Effects")).tag(2)
+                        Text(L10n.string("Windows")).tag(3)
+                        Text(L10n.string("Behavior")).tag(4)
+                        Text(L10n.string("New windows")).tag(5)
+                        Text(L10n.string("System")).tag(6)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    // 分段导航保留原有分页，避免 NSTabView 的不透明底板遮住玻璃。
+                    Group {
+                        switch selectedTab {
+                        case 1: iconsTab
+                        case 2: effectsTab
+                        case 3: windowsTab
+                        case 4: behaviorTab
+                        case 5: strategyTab
+                        case 6: systemTab
+                        default: dockTab
+                        }
+                    }
                 }
                 .padding([.horizontal, .bottom], 20)
             } else {
-                searchResults
+                searchResults.scrollContentBackground(.hidden)
             }
         }
-        .frame(minWidth: 560, minHeight: 560)
+        .frame(minWidth: 720, minHeight: 620)
+        .toggleStyle(.switch)
         .environment(\.locale, Locale(identifier: prefs.language.rawValue))
     }
 
@@ -186,7 +203,13 @@ struct PreferencesView: View {
     private static let settingsIndex: [SettingEntry] = [
         .init(name: "App language", tab: 6, keywords: "language English Chinese 简体中文 语言 汉化"),
         .init(name: "Dock position", tab: 0, keywords: "edge top bottom left right side"),
-        .init(name: "Material / blur", tab: 0, keywords: "vibrancy translucency hud"),
+         .init(name: "Background material", tab: 0, keywords: "vibrancy translucency hud liquid glass solid"),
+        .init(name: "Background appearance", tab: 0, keywords: "light dark tone"),
+        .init(name: "Dock background opacity", tab: 0, keywords: "transparency alpha glass"),
+        .init(name: "Edge highlight strength", tab: 0, keywords: "glass edge light highlight"),
+        .init(name: "Edge highlight width", tab: 0, keywords: "glass edge light highlight"),
+        .init(name: "Glass transparency", tab: 0, keywords: "transparency clear glass background"),
+        .init(name: "Glass tint strength", tab: 0, keywords: "transparency tint clear glass"),
         .init(name: "Dock height", tab: 0, keywords: "thickness size"),
         .init(name: "Corner radius", tab: 0, keywords: "rounded"),
         .init(name: "Gap from screen edge", tab: 0, keywords: "margin"),
@@ -251,6 +274,18 @@ struct PreferencesView: View {
         }
     }
 
+    /// 0…100% 仅淡化背景；100% 保留原生材质本身的半透明效果。
+    private func opacityRow(_ title: String, value: Binding<Double>) -> some View {
+        HStack {
+            Text(L10n.string(title))
+            Slider(value: value, in: 0...1, step: 0.01)
+                .accessibilityLabel(L10n.string(title))
+            Text("\(Int((value.wrappedValue * 100).rounded()))%")
+                .monospacedDigit().frame(width: 42, alignment: .trailing)
+        }
+        .help(L10n.string("Only the background fades. At 100%, glass retains its native translucency. Reduce Transparency overrides this setting."))
+    }
+
     // MARK: Dock — the bar's geometry, outline, and auto-hide
 
     private var dockTab: some View {
@@ -258,8 +293,48 @@ struct PreferencesView: View {
             Section(L10n.string("Layout")) {
                 enumPicker(L10n.string("Position"), help: L10n.string("Which screen edge the bar sits on."),
                            bind(\.barPosition)) { $0.label }
-                enumPicker(L10n.string("Material / blur"), help: L10n.string("The bar's translucency and blur style."),
-                           bind(\.barMaterial)) { $0.label }
+                enumPicker(L10n.string("Background material"), help: L10n.string("Choose glass or a solid background."),
+                           bind(\.dockBackground)) { $0.label }
+                enumPicker(L10n.string("Background appearance"), help: L10n.string("Appearance is independent of the custom tint color."),
+                           bind(\.glassTone)) { $0.label }
+                opacityRow(prefs.dockBackground == .glass ? "Glass tint strength" : "Dock background opacity",
+                           value: bind(\.dockOpacity))
+                    .disabled(prefs.dockBackground == .glass && prefs.glassTone == .automatic
+                              && !prefs.dockTintEnabled && !prefs.hasDockTintOverrides)
+                    .help(L10n.string(prefs.dockBackground == .glass
+                        ? "Tint strength preserves glass highlights. Select Light, Dark, or a custom color to adjust it."
+                        : "Only the background fades. At 100%, glass retains its native translucency. Reduce Transparency overrides this setting."))
+                if prefs.dockBackground == .glass && prefs.glassTone == .automatic
+                    && !prefs.dockTintEnabled && !prefs.hasDockTintOverrides {
+                    Text(L10n.string("Follow System uses the native glass appearance. With no custom tint, Tint Strength has no color to adjust; choose Light, Dark, or enable tinting."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if prefs.dockBackground == .glass {
+                    if #available(macOS 27.0, *), ProcessInfo.processInfo.operatingSystemVersion.majorVersion == 27 {
+                        opacityRow("Glass transparency", value: bind(\.glassTransparency))
+                            .help(L10n.string("Higher values reduce background blur and fill, preserving icons and edge highlights. 0% restores the system material."))
+                        HStack {
+                            Text(L10n.string("Edge highlight strength"))
+                            Spacer()
+                            Slider(value: bind(\.glassHighlightStrength), in: 0...2, step: 0.05)
+                                .frame(maxWidth: 240)
+                                .accessibilityLabel(L10n.string("Edge highlight strength"))
+                            Text("\(Int((prefs.glassHighlightStrength * 100).rounded()))%")
+                                .monospacedDigit().frame(width: 48, alignment: .trailing)
+                        }
+                        .help(L10n.string("Adjust both edges together. 0% turns highlights off; 100% is the default."))
+                        HStack {
+                            Text(L10n.string("Edge highlight width"))
+                            Spacer()
+                            Slider(value: bind(\.glassHighlightWidth), in: 0.25...3, step: 0.05)
+                                .frame(maxWidth: 240)
+                                .accessibilityLabel(L10n.string("Edge highlight width"))
+                            Text(String(format: "%.2f×", prefs.glassHighlightWidth))
+                                .monospacedDigit().frame(width: 48, alignment: .trailing)
+                        }
+                        .help(L10n.string("Width relative to the default highlight. Independent of glass transparency."))
+                    }
+                }
                 NumericRow(title: L10n.string("Dock height"),
                            help: L10n.string(
                                "How thick the bar is, in points. The smallest setting hugs the icons "
@@ -414,6 +489,7 @@ struct PreferencesView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
     // MARK: Icons — size, spacing, and the running-app indicator
@@ -472,6 +548,7 @@ struct PreferencesView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
     // MARK: Effects — hover, and the add/remove icon animation
@@ -530,6 +607,7 @@ struct PreferencesView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
     // MARK: Windows — per-window icons, titles, and the App Launcher
@@ -551,12 +629,14 @@ struct PreferencesView: View {
                                    + "window open here (single-window apps stay a plain icon)."),
                                bind(\.windowLabelScope)) { $0.label }
                         .disabled(!prefs.showWindowLabels)
+                    Toggle(L10n.string("Automatic title color"), isOn: bind(\.automaticTitleColor))
+                        .disabled(!prefs.showWindowLabels)
                     ColorPicker(L10n.string("Title text color"), selection: Binding(
                         get: { Color(nsColor: prefs.windowLabelTextColor) },
                         set: { prefs.windowLabelTextColor = NSColor($0) }
                     ), supportsOpacity: true)
                         .help(L10n.string("Color of the window-title text shown in each wide item."))
-                        .disabled(!prefs.showWindowLabels)
+                        .disabled(!prefs.showWindowLabels || prefs.automaticTitleColor)
                     NumericRow(title: L10n.string("Window item width"),
                                help: L10n.string("How wide each labeled window item is, in points."),
                                spec: Preferences.windowLabelWidthSpec,
@@ -625,6 +705,7 @@ struct PreferencesView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
     // MARK: Behavior — clicks, refresh, faster switch, and warnings
@@ -717,6 +798,7 @@ struct PreferencesView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
     // MARK: System — macOS Dock, Raycast, menu-bar / login / Accessibility, and uninstall
@@ -825,6 +907,7 @@ struct PreferencesView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
     // MARK: Strategies
@@ -871,6 +954,7 @@ struct PreferencesView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 }
 

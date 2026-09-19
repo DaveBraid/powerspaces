@@ -7,8 +7,10 @@
 - 核心目标：让 macOS 多桌面的窗口操作稳定、可预期，尽量在当前桌面完成聚焦和新建窗口，减少意外跳转，接近 Windows 11 的虚拟桌面体验。
 - 保留上游已实现的原生 Spaces、Mission Control、手势、多显示器和按应用配置策略等能力。
 - 当前优化方向：支持简体中文，提升自带 Dock 的视觉与交互品质，以 macOS 原生 Dock 为体验参照。
-- 当前执行顺序：先完成汉化及设置中的 `English / 简体中文` 语言选项；外观改造暂缓，待用户明确继续。
+- 当前范围：已完成 `English / 简体中文`；用户已授权将程序坞和设置窗口升级为原生 Liquid Glass。
 - 主要适配与实机验证环境为 macOS 27；不因本机版本而无故提高最低部署版本。
+- 用户已于 2026-09-19 授权：后续修改通过必要的构建与检查后，默认自动更新 `/Applications/Powerspaces.app` 并重新启动，无需重复询问。正常退出旧进程后替换，保留用户配置及可回退的上一版；不自动授予系统权限。此授权不代表自动提交或推送 Git。
+- 开发经验集中维护于 `docs/development-experience.md`，只记录重要、可复用且有依据的结论；优先更新现有文档，不随意新增审查报告或过程记录。
 - 每次功能、构建或安装流程变化时，同步更新对应文档；本 fork 的本地化与切换安装说明见 `docs/zh-CN.md`。
 - 优先维护现有可用行为。中文化、视觉改造、窗口策略变更分别推进，避免在外观修改中夹带行为重写。
 - 系统 Dock 点击增强、将其他 Space 的窗口移到当前桌面，属于此前讨论过的候选方案，尚未实现，也不自动纳入每次改进任务。
@@ -77,7 +79,7 @@
 
 ## Dock 视觉与交互要求
 
-- 优先改进现有 AppKit 面板，复用 `NSVisualEffectView`、图标、布局和动画机制；不为视觉效果重写成 WebView 或引入大型依赖。
+- 优先改进现有 AppKit 面板，macOS 26 起使用 `NSGlassEffectView`，旧系统回退 `NSVisualEffectView`，复用图标、布局和动画机制；不为视觉效果重写成 WebView 或引入大型依赖。
 - 关注材质、圆角、描边、阴影、间距、图标比例、运行状态、悬停反馈和动效节奏；在清晰度、响应速度和能耗之间取舍。
 - 外观参数放入现有偏好模型，注明单位、范围和默认值，避免散落魔法数字。
 - 保留点击聚焦 / 最小化、强制新建修饰键、右键菜单、拖拽排序、固定项及自动隐藏语义。
@@ -111,10 +113,11 @@
 在仓库根目录执行：
 
 ```bash
-swift build                          # 编译 Swift / C targets
+swift build --build-system native    # 编译 Swift / C targets
 swift run spacekit-tests             # 运行现有测试入口，成功退出码为 0
-swift run PowerspacesApp --check-localization # 校验资源、参数与语言持久化，仅写临时目录
-swift run PowerspacesApp --preview-settings   # 独立设置预览，不启动桌面管理或使用真实配置
+swift run --build-system native PowerspacesApp --check-localization # 校验资源、参数与语言持久化，仅写临时目录
+swift run --build-system native PowerspacesApp --preview-settings   # 独立设置预览，不启动桌面管理或使用真实配置
+swift run --build-system native PowerspacesApp --preview-appearance # 设置与静态示例程序坞，使用临时配置
 ./scripts/make-app.sh                # 按需构建 release 并组装本地 Powerspaces.app
 ```
 
@@ -127,3 +130,7 @@ swift run PowerspacesApp --preview-settings   # 独立设置预览，不启动�
 - 不通过 sudo 运行整套构建，不提交 `.build/`、`.app`、`node_modules/` 等生成物。
 - macOS 27 的当前 Command Line Tools 缺少 `SwiftUIMacros` 插件；`ViewState` 显式引用原有 `SwiftUI.State<Value>` 属性包装器，避免选择同名宏。维护时不要无依据地改回 `@State`。
 - 涉及窗口行为时按改动范围验证：当前桌面有窗口、仅其他桌面有窗口、进程无窗口、最小化 / 隐藏、重复点击、切桌面竞态、多屏及权限缺失。报告实际验证项，区分自动测试和实机结果。
+
+- 本机默认 swiftbuild 后端误将 SDK 标记为 14.0；应用构建和预览暂用 `--build-system native`。交付前用 `xcrun vtool -show-build` 确认真正的 SDK 版本，最低部署版本仍保留 14.0；不要用修改 Mach-O 的方式伪造 SDK。
+- macOS 27 程序坞透光调节隔离于 `GlassBackgroundTuning.swift`，使用经探测的私有玻璃滤镜参数；保留版本限制、原值恢复及失效回退，不修改系统全局设置或增加定时轮询。设置窗口不使用该调节。
+- 外观设置分开维护材质、明暗与背景不透明度；运行 `--check-appearance` 检查旧配置兼容，系统“降低透明度”优先于应用滑块。

@@ -5,6 +5,12 @@
 import AppKit
 
 // 本地化验证和预览均在正式启动前分流，不注册桌面监听或改写系统偏好。
+if CommandLine.arguments.contains("--check-quit") {
+    exit(DevelopmentTools.checkQuitAction() ? 0 : 1)
+}
+if CommandLine.arguments.contains("--check-appearance") {
+    exit(DevelopmentTools.checkAppearance() ? 0 : 1)
+}
 if CommandLine.arguments.contains("--check-localization") {
     exit(DevelopmentTools.checkLocalization() ? 0 : 1)
 }
@@ -14,7 +20,8 @@ if DevelopmentTools.isPreview {
     app.delegate = previewDelegate
     let strategies = StrategySettingsController(
         url: DevelopmentTools.previewDirectory.appendingPathComponent("config.json"))
-    PreferencesWindowController.show(strategies: strategies)
+    if DevelopmentTools.isGlassPreview { GlassComparisonWindow.show() }
+    else { PreferencesWindowController.show(strategies: strategies) }
     app.run()
     exit(0)
 }

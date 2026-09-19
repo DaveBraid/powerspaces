@@ -81,10 +81,7 @@ final class StatusItemController: NSObject, NSMenuItemValidation {
         menu.addItem(menuItem(L10n.string("Reset Accessibility Permission…"), #selector(resetPermissions(_:)), symbol: "arrow.counterclockwise"))
         menu.addItem(.separator())
         menu.addItem(menuItem(L10n.string("About Powerspaces"), #selector(showAbout), symbol: "info.circle"))
-        let quit = NSMenuItem(title: L10n.string("Quit Powerspaces"),
-                              action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        quit.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: nil)
-        menu.addItem(quit)
+        menu.addItem(ApplicationActions.shared.quitMenuItem(keyEquivalent: "q"))
         return menu
     }
 
