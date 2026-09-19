@@ -60,3 +60,11 @@
 - 玻璃固定厚度后，放大图标会超出材质边界。实测 AppKit 图层重建会恢复宿主 `clipsToBounds`／`masksToBounds`，需在 Dock 宿主布局时保持前景不裁切；四向几何测试同时检查裁切标志，另以纯图标预览检查实际上沿。
 
 - 程序坞缩放会改变窗口及 tracking area，快速跨入其他应用时仅依赖 mouseExited 可能遗漏收尾。复用本地／全局鼠标事件监听，在收到窗口外事件时启动余弦退出；即使关闭自动隐藏，开启缩放仍需该监听。仅处理已有缩放，不增加轮询。
+
+### 原生工作区预留实验（27.0 / 26A428）
+
+- `SLSSetDockRectWithOrientation` 可改变服务器保存的 Dock 矩形，但不等于已运行应用刷新工作区：底部预留 79→119 点，新进程的 `NSScreen.visibleFrame` 和测试窗口 zoom 上移 40 点；提前启动的独立 AppKit 进程即使用标准 `NSApplication.run`，仍保持 79 点。重新取得 `NSScreen.screens` 也无效。不要以新进程验证替代已运行应用验证。
+- 核对本机系统 Dock 二进制：矩形变化发送 `0x4b1` 广播，载荷为四个 Float（x/y/width/height）加两个 UInt32（reason/orientation），共 24 字节，随后调用上述 setter；原型载荷与顺序并未漏掉这一通知。AppKit 也注册了 `0x4b1`。
+- 根因证据：`SLSPostBroadcastNotification`（`CGSPostBroadcastNotification` 的同一入口）只发单向 Mach 消息；返回 0 是发送成功。WindowServer 的 `_CGXPostBroadcastNotification` 对连接资格做检查，普通实验进程未获投递；只重发当前矩形、给同一消息补回复端口后，实测 `transport=0 reply_id=30222 server_result=1000 (0x3e8)`。不可把传输成功当作服务端授权成功，也不能仅按符号存在启用功能。
+- 原型与日志保留在 `/tmp/ps-dock-workarea-study/`：`observer.m` / `observer-run.log`（提前启动、标准事件循环）、`external-run.log`（有独立看门狗恢复）、`ack.m` / `ack.log`（实际拒绝码）；临时路径非仓库依赖。回复诊断使用本机构建反汇编核对的私有函数相对地址，只可用于这次实验，不能进入生产代码。
+- 所有测试已恢复底部 79 点并由独立进程回读。未验证其他方向、自动隐藏和普通应用；第二屏仅确认未受底部实验影响，不代表支持逐屏预留。当前不接入仅改变服务器、无法同步现有应用的半成品，也不接管原生 Dock 的特权连接；待找到并验证允许 PS 使用的刷新路径后再实现版本探测、恢复和失败回退。正式 PS 无此工作区写入逻辑。
