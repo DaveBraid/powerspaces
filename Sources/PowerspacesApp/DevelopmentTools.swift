@@ -137,6 +137,7 @@ enum DevelopmentTools {
             print("Dock anchors \(position): \(pass ? "PASS" : "FAIL") \(before) -> \(after)")
             prefs.hoverAnimation = 0.12
             if !panel.checkMagnificationInteractions() { failures += 1 }
+            if !panel.checkMagnificationPointerRouting() { failures += 1 }
             prefs.hoverAnimation = 0
             panel.close()
         }

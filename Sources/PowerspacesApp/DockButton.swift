@@ -24,7 +24,7 @@ final class DockItemCell: NSButtonCell {
 }
 
 final class DockButton: NSButton {
-    var onPointerMoved: ((NSPoint) -> Void)?
+    var onPointerMoved: ((NSPoint) -> Void)? // 即时屏幕坐标，不重用布局前的事件坐标。
     var usesSharedMagnification = false
     var restingWidth: CGFloat = 0
     var crossAxisCenteringOffset: CGFloat = 0 {
@@ -175,7 +175,7 @@ final class DockButton: NSButton {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        if let trackingArea { removeTrackingArea(trackingArea) }
+        guard trackingArea == nil else { return } // inVisibleRect 已自动跟随缩放。
         // `.inVisibleRect` lets AppKit keep the tracking region pinned to the
         // view's live bounds, so it stays stable while we're laid out near the
         // panel's edge instead of relying on a snapshot taken at one moment.
@@ -188,9 +188,9 @@ final class DockButton: NSButton {
 
     override func mouseEntered(with event: NSEvent) {
         setHover(true)
-        onPointerMoved?(event.locationInWindow)
+        onPointerMoved?(NSEvent.mouseLocation)
     }
-    override func mouseMoved(with event: NSEvent) { onPointerMoved?(event.locationInWindow) }
+    override func mouseMoved(with event: NSEvent) { onPointerMoved?(NSEvent.mouseLocation) }
     override func mouseExited(with event: NSEvent) { setHover(false) }
     override func rightMouseDown(with event: NSEvent) { onRightClick?() }
     /// Button number 2 is the middle mouse button (0 = left, 1 = right); other

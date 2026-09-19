@@ -125,6 +125,7 @@ final class DockPanel: NSPanel {
     /// and pointer-tracking is relative to this screen, so several docks — one per
     /// display — don't fight over `NSScreen.main`.
     nonisolated(unsafe) private var badgeObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var occlusionObserver: NSObjectProtocol?
     let boundDisplayID: CGDirectDisplayID
 
     /// The live `NSScreen` for `boundDisplayID`, re-resolved each use so it survives
@@ -144,6 +145,14 @@ final class DockPanel: NSPanel {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 120, height: 64),
                    styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
+        occlusionObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: self, queue: .main
+        ) { [weak self] _ in
+            // 延至当前窗口排序完成，处理鼠标静止时被覆盖；没有持续轮询。
+            DispatchQueue.main.async { [weak self] in
+                self?.endMagnificationIfPointerLeft(at: NSEvent.mouseLocation, deliveredElsewhere: true)
+            }
+        }
         badgeObserver = NotificationCenter.default.addObserver(forName: .dockNotificationBadgesChanged,
                                                                object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -207,7 +216,7 @@ final class DockPanel: NSPanel {
         // past the screen edge onto a vertically-stacked neighbouring display. The
         // stack's own constraints are (re)built per orientation in `applyBarFrame`.
         acceptsMouseMovedEvents = true
-        container.onPointerMoved = { [weak self] point in self?.magnify(at: point) }
+        container.onPointerMoved = { [weak self] point in self?.handleMagnificationPointer(point) }
         contentView = container
         applyOrientation() // needs `effect` in the container (frames the bar + stack)
         applyDockTint()
@@ -665,7 +674,7 @@ final class DockPanel: NSPanel {
             let button = DockButton()
             button.cell = DockItemCell()
             button.usesSharedMagnification = true
-            button.onPointerMoved = { [weak self] point in self?.magnify(at: point) }
+            button.onPointerMoved = { [weak self] point in self?.handleMagnificationPointer(point) }
             button.restingWidth = width
             button.isBordered = false
             // Own our layer from birth (the window is only *implicitly* layer-backed
@@ -1226,7 +1235,7 @@ final class DockPanel: NSPanel {
         let buttons = stack.arrangedSubviews.compactMap { $0 as? DockButton }
         guard !buttons.isEmpty else { return }
         let button = buttons[buttons.count / 2]
-        magnify(at: stack.convert(NSPoint(x: button.frame.midX, y: button.frame.midY), to: nil))
+        magnify(atScreenPoint: convertPoint(toScreen: stack.convert(NSPoint(x: button.frame.midX, y: button.frame.midY), to: nil)))
         if animated { return }
         magnificationTimer?.invalidate()
         magnificationTimer = nil
@@ -1263,15 +1272,74 @@ final class DockPanel: NSPanel {
         return entered && exited && reordered && dragged && frozen && restored
     }
 
+    /// 独立实窗回归：伪退出、同一屏幕坐标、遮挡命中、隐藏复位及追踪区稳定性。
+    func checkMagnificationPointerRouting() -> Bool {
+        guard let button = stack.arrangedSubviews.compactMap({ $0 as? DockButton }).first else { return false }
+        previewMagnification()
+        let rect = convertToScreen(button.convert(button.bounds, to: nil))
+        let point = NSPoint(x: rect.midX, y: rect.midY)
+        endMagnificationIfPointerLeft(at: point, deliveredElsewhere: true)
+        let inside = magnificationTarget == 1
+        magnify(atScreenPoint: point)
+        let focus = magnificationFocus
+        magnify(atScreenPoint: point)
+        let stableFocus = magnificationFocus == focus && magnificationTarget == 1
+        container.updateTrackingAreas()
+        button.updateTrackingAreas()
+        let areas = container.trackingAreas + button.trackingAreas
+        container.updateTrackingAreas()
+        button.updateTrackingAreas()
+        let after = container.trackingAreas + button.trackingAreas
+        let stableTracking = areas.count == after.count && zip(areas, after).allSatisfy { $0 === $1 }
+        let cover = NSPanel(contentRect: NSRect(x: point.x - 20, y: point.y - 20, width: 40, height: 40),
+                            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        cover.level = NSWindow.Level(rawValue: level.rawValue + 1)
+        cover.orderFrontRegardless()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.03)) // 等待测试窗口提交到 WindowServer。
+        let coverHit = NSWindow.windowNumber(at: point, belowWindowWithWindowNumber: 0) == cover.windowNumber
+        magnify(atScreenPoint: point) // 测试先恢复目标，排除通知提前收尾造成的假阳性。
+        let activeUnderCover = frame.contains(point) && magnificationTarget == 1
+        endMagnificationIfPointerLeft(at: point, deliveredElsewhere: true)
+        let covered = coverHit && activeUnderCover && magnificationTarget == 0
+        cover.orderOut(nil)
+        resetMagnification()
+        previewMagnification()
+        hideState = .hidden
+        tickMagnification()
+        let hidden = magnificationItems.isEmpty && magnificationTimer == nil
+        hideState = .shown
+        print("Magnification pointer: inside=\(inside) stableFocus=\(stableFocus) tracking=\(stableTracking) covered=\(covered) coverHit=\(coverHit) hidden=\(hidden)")
+        return inside && stableFocus && stableTracking && covered && hidden
+    }
+
     /// 跨窗口鼠标事件补足 tracking area 丢失的退出；只收尾已有缩放，不触发进入。
     func endMagnificationIfPointerLeft(at screenPoint: NSPoint, deliveredElsewhere: Bool) {
         guard !magnificationItems.isEmpty, magnificationTarget != 0 else { return }
-        guard deliveredElsewhere || !frame.contains(screenPoint) else { return }
-        magnify(at: nil) // 保留余弦退出和菜单／拖拽保护，不用持续轮询。
+        guard !pointerHitsDock(at: screenPoint, checkOcclusion: deliveredElsewhere) else { return }
+        magnify(atScreenPoint: nil) // 保留余弦退出和菜单／拖拽保护，不用持续轮询。
     }
 
-    /// 进入／退出只改变过渡目标；横向滑动直接重算边界，不叠加隐式缓动。
-    private func magnify(at point: NSPoint?) {
+    /// 屏幕矩形只是初筛；可疑退出再查当前最上层可点击窗口，覆盖遮挡且不读 AX。
+    private func pointerHitsDock(at point: NSPoint, checkOcclusion: Bool) -> Bool {
+        guard isVisible, !ignoresMouseEvents, alphaValue > 0, frame.contains(point) else { return false }
+        return !checkOcclusion || NSWindow.windowNumber(at: point, belowWindowWithWindowNumber: 0) == windowNumber
+    }
+
+    /// 实时输入与确定性预览分开；追踪区退出只是信号，不能直接把缩放目标置零。
+    private func handleMagnificationPointer(_ point: NSPoint?) {
+        guard let point else {
+            endMagnificationIfPointerLeft(at: NSEvent.mouseLocation, deliveredElsewhere: true)
+            return
+        }
+        guard pointerHitsDock(at: point, checkOcclusion: magnificationTarget != 1) else {
+            endMagnificationIfPointerLeft(at: point, deliveredElsewhere: true)
+            return
+        }
+        magnify(atScreenPoint: point)
+    }
+
+    /// 进入／退出只改变过渡目标；所有输入使用屏幕坐标，窗口变形不会改变同一点的焦点。
+    private func magnify(atScreenPoint point: NSPoint?) {
         if DevelopmentTools.isAppearancePreview, CommandLine.arguments.contains("--magnified"),
            point == nil || magnificationProgress == 1 { return } // 静态预览固定焦点，避免真实指针干扰截图。
         guard !isAnimating, !isReordering, !isExternalDragging, !isContextMenuOpen,
@@ -1292,7 +1360,7 @@ final class DockPanel: NSPanel {
         }
         guard !magnificationItems.isEmpty else { return }
         if let point {
-            let screenPoint = convertPoint(toScreen: point)
+            let screenPoint = point
             let vertical = prefs.barPosition.isVertical
             let low = magnificationItems.map { vertical ? $0.frame.minY : $0.frame.minX }.min() ?? 0
             let high = magnificationItems.map { vertical ? $0.frame.maxY : $0.frame.maxX }.max() ?? low
@@ -1534,6 +1602,7 @@ final class DockPanel: NSPanel {
 
     deinit {
         if let badgeObserver { NotificationCenter.default.removeObserver(badgeObserver) }
+        if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
         magnificationTimer?.invalidate()
         removeMouseMonitor()
         cancelHideTimer()

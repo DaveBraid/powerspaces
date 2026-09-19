@@ -29,7 +29,7 @@ extension DockPanel {
         // Coming back from a fully-hidden state: put the bar back on screen before
         // (re)configuring.
         if !isVisible { orderFrontRegardless() }
-        // 缩放也需要跨应用的离开事件，不能只依赖会随窗口变形重建的 tracking area。
+        // 缩放也需要跨应用的离开事件，不能只依赖 tracking area 的退出回调。
         if autoHideActive || Preferences.shared.hoverEnabled { installMouseMonitor() }
         else { removeMouseMonitor() }
         if autoHideActive {
