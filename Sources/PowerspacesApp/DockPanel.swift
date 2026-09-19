@@ -1214,7 +1214,8 @@ final class DockPanel: NSPanel {
         previewMagnification(animated: true)
         RunLoop.main.run(until: Date().addingTimeInterval(0.025))
         let entered = magnificationProgress > 0 && magnificationProgress < 1
-        magnify(at: nil)
+        endMagnificationIfPointerLeft(at: NSPoint(x: frame.maxX + 100, y: frame.maxY + 100),
+                                      deliveredElsewhere: true)
         RunLoop.main.run(until: Date().addingTimeInterval(0.25))
         let exited = magnificationItems.isEmpty && magnificationTimer == nil
         previewMagnification(animated: true)
@@ -1234,6 +1235,13 @@ final class DockPanel: NSPanel {
         let restored = magnificationItems.isEmpty && magnificationTimer == nil
         print("Magnification lifecycle: enter=\(entered) exit=\(exited) reorder=\(reordered) drag=\(dragged) menu=\(frozen && restored)")
         return entered && exited && reordered && dragged && frozen && restored
+    }
+
+    /// 跨窗口鼠标事件补足 tracking area 丢失的退出；只收尾已有缩放，不触发进入。
+    func endMagnificationIfPointerLeft(at screenPoint: NSPoint, deliveredElsewhere: Bool) {
+        guard !magnificationItems.isEmpty, magnificationTarget != 0 else { return }
+        guard deliveredElsewhere || !frame.contains(screenPoint) else { return }
+        magnify(at: nil) // 保留余弦退出和菜单／拖拽保护，不用持续轮询。
     }
 
     /// 进入／退出只改变过渡目标；横向滑动直接重算边界，不叠加隐式缓动。

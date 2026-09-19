@@ -29,14 +29,15 @@ extension DockPanel {
         // Coming back from a fully-hidden state: put the bar back on screen before
         // (re)configuring.
         if !isVisible { orderFrontRegardless() }
+        // 缩放也需要跨应用的离开事件，不能只依赖会随窗口变形重建的 tracking area。
+        if autoHideActive || Preferences.shared.hoverEnabled { installMouseMonitor() }
+        else { removeMouseMonitor() }
         if autoHideActive {
-            installMouseMonitor()
             // Re-assert the hidden geometry (in case the animation *type* changed
             // while hidden); otherwise start/refresh the countdown.
             if hideState == .hidden { applyHideGeometry(duration: 0) }
             else { scheduleHideIfIdle() }
         } else {
-            removeMouseMonitor()
             reveal(animated: false)
         }
     }
@@ -170,10 +171,15 @@ extension DockPanel {
         guard globalMouseMonitor == nil else { return }
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
+            self?.endMagnificationIfPointerLeft(at: NSEvent.mouseLocation, deliveredElsewhere: true)
             self?.handlePointerMoved()
         }
         localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
-            self?.handlePointerMoved()
+            if let self {
+                self.endMagnificationIfPointerLeft(at: NSEvent.mouseLocation,
+                                                   deliveredElsewhere: event.window !== self)
+                self.handlePointerMoved()
+            }
             return event
         }
     }
