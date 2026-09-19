@@ -19,6 +19,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// preference changes (see `reconcileDocks`). Each dock shows and acts on its
     /// own screen, so two screens behave like two desktops.
     private var docks: [String: DockPanel] = [:]
+    /// 按显示器收集程序坞的静止预留，供窗口避让几何查询。
+    private lazy var dockReservations = DockReservationStore(docks: { [weak self] in
+        self?.docks.values.compactMap { $0.layoutReservation() } ?? []
+    })
+    /// 提前接管窗口布局操作（Option＋绿色按钮、标题栏双击、Fn＋Control 快捷键、
+    /// 窗口菜单布局项）。默认关闭；无法可靠识别时一律放行原操作。
+    private lazy var layoutInterceptor = WindowLayoutInterceptor(reservations: dockReservations)
     private let launcherPanel = AppLauncherPanel()
     /// The optional global shortcut that opens the App Launcher from anywhere. Lazy
     /// so its fire-closure can capture `self`; applied from `applyLauncherHotkey`.
@@ -267,6 +274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.runLaunch(target: app.target) { try? $0.dockClick(target: app.target, forceNew: forceNew) }
         }
         applyLauncherHotkey() // register the global launcher shortcut if one is set
+        applyWindowLayoutInterception() // opt-in window layout takeover (event tap)
         InstalledAppsStore.shared.reload() // pre-warm the app list so the launcher opens instantly
         // The strategy controller writes config.json; reload it into the live
         // launcher and refresh so the docks' submenu ticks update.
@@ -483,6 +491,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         if appliedHideAppleDock { AppleDockController.apply(hidden: false) }
         // Remove the event tap and restore the system space-switch hotkeys cleanly.
+        layoutInterceptor.stop()
         FasterDesktopSwitch.setSwipeEnabled(false)
         FasterDesktopSwitch.setKeyboardEnabled(false)
         Preferences.shared.spaceHotkeysDisabledByUs = false
@@ -625,6 +634,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func preferencesDidChange() {
+        // 布局接管开关翻转时才启停事件 tap，避免每个偏好变更都重建。
+        applyWindowLayoutInterception()
         // Only touch the system Dock when this specific toggle flipped — every
         // preference change posts this notification, and rewriting defaults +
         // restarting the Dock on each one would be jarring.
@@ -652,6 +663,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The "dock screens" setting may have flipped; refresh() reconciles which
         // displays have a dock.
         refresh()
+    }
+
+    // MARK: - Window layout interception
+
+    /// 是否已启用布局接管；用来和偏好对比，只在翻转时启停。
+    private var layoutInterceptionApplied = false
+
+    /// 按偏好与辅助功能授权启停布局接管。
+    ///
+    /// 接管依赖事件 tap 与 AX 写入，两者都需要辅助功能授权；未授权时保持关闭，
+    /// 所有输入维持系统原行为。
+    private func applyWindowLayoutInterception() {
+        let wanted = Preferences.shared.windowLayoutInterception && AccessibilityPermission.isTrusted
+        guard wanted != layoutInterceptionApplied else { return }
+        layoutInterceptionApplied = wanted
+        if wanted {
+            let reservations = dockReservations
+            layoutInterceptor.screensProvider = {
+                WindowLayoutScreens.make(
+                    inputs: NSScreen.screens.map {
+                        WindowLayoutScreenInput(frame: $0.frame, visibleFrame: $0.visibleFrame,
+                                                displayID: $0.displayID)
+                    },
+                    primaryHeight: NSScreen.screens.first?.frame.maxY ?? 0,
+                    reservations: reservations)
+            }
+            layoutInterceptor.onLog = { message in
+                Log.debug("Layout: \(message)")
+            }
+            if layoutInterceptor.start() {
+                Log.debug("Window layout interception enabled")
+            } else {
+                layoutInterceptionApplied = false
+                Log.error("Window layout interception could not create its event tap")
+            }
+        } else {
+            layoutInterceptor.stop()
+            Log.debug("Window layout interception disabled")
+        }
     }
 
     /// The most the poll interval can stretch when nothing is changing — small,

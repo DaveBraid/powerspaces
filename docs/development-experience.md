@@ -199,4 +199,12 @@
 - **菜单关闭会让应用重建窗口的 AX 元素**：实测 Safari 在 `INTERCEPT` 后约 38 ms 报 `window-unavailable`，持有的旧元素失效；即使重新按 pid 解析，仍会遇到「读取返回成功（`posErr=0`）且 subrole 正常、但取不到 position 值」的过渡态。修法是动画开始前重新解析聚焦窗口，并对几何读取做短暂重试。这两处修完后 `window-unavailable` 与读取失败均降为 0。
 - **事件 tap 读到的鼠标坐标是左上原点，与 AX 坐标一致**：用 `CGEvent.post` 合成点击时必须按左上原点投递，不要按左下原点翻转。实测同一枚绿灯，翻转投递会偏移到另一个元素（命中 `AXGroup` 并被拒），不翻转则 `identity=true semantic=true` 通过。此前多轮「合成点击命中 `AXDockItem`／`AXScrollArea`／`AXZoomButton`」的异常结论均源于这一个错误，与原型无关。
 - **子菜单项必须悬停展开后才出现在 AX 树中**：脚本化验证菜单命令要沿路径逐级 `mouseMoved` 悬停父项，再点击目标项；直接点击父项会关闭菜单而非展开。
+### 窗口布局避让接入正式应用（2026-09-19）
+
+原型验证通过后已按用户授权接入 PowerSpaces。实现分两层：`Sources/SpaceKit/WindowLayoutGeometry.swift`（纯几何与身份，可单测）与 `Sources/SpaceKit/WindowLayoutInterceptor.swift`（事件 tap、菜单识别、动画事务）；应用侧接线在 `AppDelegate.applyWindowLayoutInterception()`、`DockPanel.layoutReservation()` 与 `Sources/PowerspacesApp/DockReservationSource.swift`，开关为 `windowLayoutInterception`（**默认关闭**）。
+
+- **预留量必须只扣系统尚未扣除的部分**。系统 `visibleFrame` 已为 macOS 自己的 Dock 与菜单栏留出空间，而 PowerSpaces 的程序坞常停在系统 Dock 所占的同一块区域。原型原本「从屏幕物理边扣 reserve，再与 visibleFrame 求交」，在主屏上因交集取严而使预留完全失效（实测可见区 y=30..1361、程序坞厚 78pt，交集后仍为 1331pt 高）。正确做法是逐边比较 `visibleFrame` 相对物理边已让出的量，只额外扣除 `reserve - 已让出`。主屏实测：程序坞 78pt 已在系统让出的 79pt 内 → 不额外预留；设成 140pt 时恰好多让 61pt，与原型阶段量到「多扣 61pt」的数值吻合。
+- **原型阶段的 140pt 是实验设定值，不代表真实程序坞厚度**。正式实现从 `DockPanel.barThickness()` 读取真实玻璃厚度，不用面板 `frame`（后者含悬停放大朝向屏幕内侧的余量）。自动隐藏或收起的 bar 不预留常驻区域。
+- **坐标约定的坑复现两次**：`CGEvent.post` 的合成事件在事件 tap 中按左上原点读取（与 AX 一致），不要做左下原点翻转；翻转后同一坐标会落到另一个元素上（绿灯翻转投递会命中 `AXGroup` 并被拒，双击翻转投递会让 `event.location.y` 偏出标题栏带）。真机硬件输入不受影响，只有自动化验证需要遵守。
+- 三入口在正式应用内实测通过：Option＋绿灯、标题栏双击、窗口菜单「填充」均产生 `INTERCEPT → RESULT success=true` 并按几何带正确落位。`WindowLayoutDiagnostics`（`/tmp/ps-window-layout.log`）保留为落盘诊断，便于排查「识别到了但没有接管」。
 

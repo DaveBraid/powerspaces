@@ -831,6 +831,21 @@ struct PreferencesView: View {
                     + "the next launch while this stays on."))
             }
             Section {
+                Toggle(L10n.string("Avoid the dock when arranging windows"),
+                       isOn: bind(\.windowLayoutInterception))
+                    .help(L10n.string(
+                        "Take over window layout commands and animate straight to the size that clears "
+                        + "the dock, instead of maximising first and shrinking afterwards."))
+            } header: {
+                Text(L10n.string("Window layout"))
+            } footer: {
+                Text(L10n.string(
+                    "Covers Option-click on the green button, double-clicking a title bar, "
+                    + "Fn-Control-F/R/arrow keys, and the layout items in the Window menu. "
+                    + "Full-screen and multi-window arrangements keep their system behaviour, and any "
+                    + "command that cannot be identified with confidence is left to macOS."))
+            }
+            Section {
                 RaycastSetupRow()
             } header: {
                 Text(L10n.string("Raycast (experimental)"))

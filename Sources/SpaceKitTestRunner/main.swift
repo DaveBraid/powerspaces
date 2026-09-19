@@ -1658,4 +1658,110 @@ h.test("current Space is readable, or skipped") {
     }
 }
 
+print("Window layout geometry")
+h.test("dock reservation only subtracts space the system has not already reserved") {
+    // 主屏实测：物理边界 2560x1440，系统可用区 y=30..1361（已扣菜单栏与 macOS 自己的
+    // Dock，底部已让出 79pt）。PowerSpaces 的程序坞停在屏幕底部、厚 78pt，与系统让出的
+    // 是同一块区域，因此不应再扣——旧写法会得到净预留 157pt，窗口离程序坞过远。
+    let screen = WindowLayoutScreen(
+        frame: CGRect(x: 0, y: 0, width: 2560, height: 1440),
+        visibleFrame: CGRect(x: 0, y: 30, width: 2560, height: 1331),
+        displayID: 1,
+        reservation: DockReservation(displayID: 1, edge: .bottom, thickness: 78))
+    h.eq(screen.allowedFrame, CGRect(x: 0, y: 30, width: 2560, height: 1331),
+         "the system's own bottom inset already covers the dock")
+}
+
+h.test("a dock taller than the system inset reserves only the difference") {
+    // 程序坞厚 140pt、系统已让出 79pt → 只需再让 61pt。
+    let screen = WindowLayoutScreen(
+        frame: CGRect(x: 0, y: 0, width: 2560, height: 1440),
+        visibleFrame: CGRect(x: 0, y: 30, width: 2560, height: 1331),
+        displayID: 1,
+        reservation: DockReservation(displayID: 1, edge: .bottom, thickness: 140))
+    h.eq(screen.allowedFrame, CGRect(x: 0, y: 30, width: 2560, height: 1270),
+         "only the extra 61pt is reserved")
+    h.eq(screen.target(for: .fill), CGRect(x: 0, y: 30, width: 2560, height: 1270), "fill target")
+}
+
+h.test("dock reservation is a no-op on a display without a dock") {
+    // 副屏无程序坞：可用区等于物理边界。程序坞若显示在该屏且系统未留空间，
+    // 需要完整预留。
+    let screen = WindowLayoutScreen(
+        frame: CGRect(x: 2560, y: 0, width: 2560, height: 1440),
+        visibleFrame: CGRect(x: 2560, y: 0, width: 2560, height: 1440),
+        displayID: 2,
+        reservation: DockReservation(displayID: 2, edge: .bottom, thickness: 140))
+    h.eq(screen.target(for: .fill), CGRect(x: 2560, y: 0, width: 2560, height: 1300),
+         "fill target on the secondary display")
+}
+
+h.test("auto-hiding dock reserves no permanent space") {
+    let screen = WindowLayoutScreen(
+        frame: CGRect(x: 0, y: 0, width: 2560, height: 1440),
+        visibleFrame: CGRect(x: 0, y: 30, width: 2560, height: 1331),
+        displayID: 1,
+        reservation: DockReservation(displayID: 1, edge: .bottom, thickness: 140,
+                                     isHiddenOrAutoHiding: true))
+    h.eq(screen.allowedFrame, CGRect(x: 0, y: 30, width: 2560, height: 1331),
+         "an auto-hiding dock must not reserve a permanent band")
+}
+
+h.test("every dock edge reserves inward from its own edge") {
+    // 各方向：系统只在顶部留了 30pt（菜单栏），不扣底部/左右。
+    let frame = CGRect(x: 0, y: 0, width: 2000, height: 1200)
+    let visible = CGRect(x: 0, y: 30, width: 2000, height: 1170)
+    let expected: [DockEdge: CGRect] = [
+        .bottom: CGRect(x: 0, y: 30, width: 2000, height: 1070),
+        // 系统顶部已让出 30pt（菜单栏），dock 厚 100 → 只需再让 70，内沿落在 y=100。
+        .top: CGRect(x: 0, y: 100, width: 2000, height: 1100),
+        .left: CGRect(x: 100, y: 30, width: 1900, height: 1170),
+        .right: CGRect(x: 0, y: 30, width: 1900, height: 1170),
+    ]
+    for edge in DockEdge.allCases {
+        let screen = WindowLayoutScreen(frame: frame, visibleFrame: visible, displayID: 1,
+                                        reservation: DockReservation(displayID: 1, edge: edge,
+                                                                     thickness: 100))
+        h.eq(screen.allowedFrame, expected[edge]!, "\(edge.rawValue) edge reservation")
+    }
+}
+
+h.test("layout commands split the allowed frame correctly") {
+    let screen = WindowLayoutScreen(
+        frame: CGRect(x: 0, y: 0, width: 2560, height: 1440),
+        visibleFrame: CGRect(x: 0, y: 30, width: 2560, height: 1331),
+        displayID: 1,
+        reservation: DockReservation(displayID: 1, edge: .bottom, thickness: 140))
+    h.eq(screen.target(for: .left), CGRect(x: 0, y: 30, width: 1280, height: 1270), "left half")
+    h.eq(screen.target(for: .right), CGRect(x: 1280, y: 30, width: 1280, height: 1270), "right half")
+    h.eq(screen.target(for: .top), CGRect(x: 0, y: 30, width: 2560, height: 635), "top half")
+    h.eq(screen.target(for: .bottom), CGRect(x: 0, y: 665, width: 2560, height: 635), "bottom half")
+    h.eq(screen.target(for: .topLeft), CGRect(x: 0, y: 30, width: 1280, height: 635), "top-left quarter")
+    h.eq(screen.target(for: .bottomRight), CGRect(x: 1280, y: 665, width: 1280, height: 635),
+         "bottom-right quarter")
+    h.ok(screen.target(for: .restore) == nil, "restore has no geometric target")
+}
+
+h.test("window identity never depends on launchDate") {
+    // 实测 Finder 的 launchDate 恒为 nil；身份只用 pid 与窗口 ID。
+    let identity = WindowIdentity(pid: 71303, windowID: 21291)
+    h.eq(identity.logDescription, "71303:21291", "identity description")
+    h.eq(identity, WindowIdentity(pid: 71303, windowID: 21291), "equal identities")
+    h.ok(identity != WindowIdentity(pid: 71303, windowID: 99), "different window ids differ")
+}
+
+h.test("menu commands disambiguate by their enclosing section") {
+    // Safari 在同一菜单内用禁用的分组标题划分区段，「左侧」在两个区段里含义不同。
+    h.eq(WindowLayoutInterceptor.command(title: "左侧", section: "二等分"), .left, "halves → left")
+    h.eq(WindowLayoutInterceptor.command(title: "左侧", section: "四等分"), nil, "quarters has no plain 左侧")
+    h.eq(WindowLayoutInterceptor.command(title: "左上", section: "四等分"), .topLeft, "quarters → topLeft")
+    h.eq(WindowLayoutInterceptor.command(title: "左上", section: "二等分"), nil, "halves has no 左上")
+    h.eq(WindowLayoutInterceptor.command(title: "填充", section: ""), .fill, "fill is unambiguous")
+    h.eq(WindowLayoutInterceptor.command(title: "恢复上一个大小", section: ""), .restore, "restore")
+    h.eq(WindowLayoutInterceptor.command(title: "左侧与右侧", section: "排列"), nil,
+         "multi-window arrangements stay with the system")
+    h.eq(WindowLayoutInterceptor.command(title: "屏幕左侧", section: ""), nil,
+         "full-screen tiling stays with the system")
+}
+
 h.finish()

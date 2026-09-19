@@ -186,6 +186,7 @@ final class Preferences: ObservableObject {
         static let menuBarShowsDesktopNumber = "menuBarShowsDesktopNumber"
         static let launchAtLogin = "launchAtLogin"
         static let hideAppleDock = "hideAppleDock"
+        static let windowLayoutInterception = "windowLayoutInterception"
         static let fasterDesktopSwitch = "fasterDesktopSwitch"
         static let fasterKeyboardSwitch = "fasterKeyboardSwitch"
         // Internal bookkeeping (not user-facing): set while we've disabled the
@@ -289,6 +290,8 @@ final class Preferences: ObservableObject {
             K.menuBarShowsDesktopNumber: false,
             K.launchAtLogin: true,
             K.hideAppleDock: true,
+            // 默认关闭：这是全局输入接管，用户明确开启后才生效。
+            K.windowLayoutInterception: false,
             K.fasterDesktopSwitch: false,
             K.fasterKeyboardSwitch: false,
             K.appLauncherEnabled: true,
@@ -490,6 +493,10 @@ final class Preferences: ObservableObject {
     /// in for it. Toggling this is acted on by `AppleDockController` (driven from
     /// `AppDelegate`), which forces the Dock to stay auto-hidden / restores it.
     var hideAppleDock: Bool { get { bln(K.hideAppleDock) } set { setBln(newValue, K.hideAppleDock) } }
+    /// 提前接管窗口布局：Option＋绿色按钮、标题栏双击、Fn＋Control 快捷键与窗口
+    /// 菜单里的布局项都会直接动画到「避开程序坞」的目标尺寸，而不是让系统先最大化。
+    /// 默认关闭——它会拦截全局输入，无法可靠识别时一律放行原操作。
+    var windowLayoutInterception: Bool { get { bln(K.windowLayoutInterception) } set { setBln(newValue, K.windowLayoutInterception) } }
     /// "Faster desktop switch": intercept the trackpad space-switch swipe and jump
     /// instantly, skipping macOS's slide animation. Off by default — it changes how
     /// the swipe lands and uses private APIs. Acted on by `AppDelegate` (which

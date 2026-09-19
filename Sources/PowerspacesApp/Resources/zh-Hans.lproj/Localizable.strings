@@ -646,3 +646,9 @@
 "Dots indicate whether an app is running. Apps with no windows are dimmed, including after quitting. Pinned apps remain after quitting; other apps disappear. Minimized and hidden windows still count as open." = "圆点表示应用是否运行；没有窗口时图标调暗。固定应用退出后保留、圆点熄灭且图标调暗；未固定应用退出后消失。最小化和隐藏窗口仍视为已打开。";
 "This full-screen window is no longer available." = "此全屏窗口已关闭或已退出全屏。";
 "Window is on another desktop; click to focus" = "窗口位于其他桌面，点击可前往";
+
+// 窗口布局避让（提前接管布局操作）。
+"Avoid the dock when arranging windows" = "整理窗口时避开程序坞";
+"Take over window layout commands and animate straight to the size that clears the dock, instead of maximising first and shrinking afterwards." = "接管窗口布局命令，直接动画到避开程序坞的尺寸，而不是先最大化再收缩。";
+"Window layout" = "窗口布局";
+"Covers Option-click on the green button, double-clicking a title bar, Fn-Control-F/R/arrow keys, and the layout items in the Window menu. Full-screen and multi-window arrangements keep their system behaviour, and any command that cannot be identified with confidence is left to macOS." = "覆盖 Option＋绿色按钮、双击标题栏、Fn＋Control＋F／R／方向键，以及「窗口」菜单中的布局项。全屏与多窗口排列保持系统原有行为；无法可靠识别的命令一律交回 macOS 处理。";

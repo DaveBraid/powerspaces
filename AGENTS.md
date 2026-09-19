@@ -13,7 +13,8 @@
 - 开发经验集中维护于 `docs/development-experience.md`，只记录重要、可复用且有依据的结论；优先更新现有文档，不随意新增审查报告或过程记录。
 - 每次功能、构建或安装流程变化时，同步更新对应文档；本 fork 的本地化与切换安装说明见 `docs/zh-CN.md`。
 - 优先维护现有可用行为。中文化、视觉改造、窗口策略变更分别推进，避免在外观修改中夹带行为重写。
-- 系统 Dock 点击增强、将其他 Space 的窗口移到当前桌面，属于此前讨论过的候选方案，尚未实现，也不自动纳入每次改进任务。
+- 系统 Dock 点击增强，以及将其他 Space 的已有窗口移到当前桌面，仍属于此前讨论过的候选方案，尚未实现，也不自动纳入每次改进任务。
+- 窗口布局避让已于 2026-09-19 经用户授权纳入正式应用（`windowLayoutInterception`，默认关闭）：接管 Option＋绿色按钮、标题栏双击、Fn＋Control 快捷键与「窗口」菜单布局项，直接动画到避开程序坞的目标尺寸。实现位于 `Sources/SpaceKit/WindowLayoutInterceptor.swift` 与 `WindowLayoutGeometry.swift`，应用侧接线在 `AppDelegate`、`DockPanel.layoutReservation()` 与 `DockReservationSource.swift`。它不改变系统工作区，也不接管全屏与多窗口排列命令；无法可靠识别时必须放行原操作。
 
 ## 仓库事实与入口
 

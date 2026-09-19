@@ -1265,6 +1265,20 @@ final class DockPanel: NSPanel {
     private var magnificationReservedFrame: NSRect?
     var pointerInteractionFrame: NSRect { magnificationVisibleFrame ?? frame }
     private var magnificationRestFrame = NSRect.zero
+
+    /// 供窗口避让使用的静止预留：自屏幕物理边量起、到可见玻璃外沿为止的厚度。
+    ///
+    /// 只取 `barThickness()`（玻璃本体），不能用面板 `frame`：后者含悬停放大朝向
+    /// 屏幕内侧预留的余量，用它会让窗口多退一段、与系统 `visibleFrame` 重复扣减。
+    func layoutReservation() -> DockReservation? {
+        guard let screen = boundScreen else { return nil }
+        let edge = DockEdge(rawValue: Preferences.shared.barPosition.rawValue) ?? .bottom
+        // 收起的 bar 不占常驻区域；放大进行中则视为已露出。
+        let tucked = hideState == .hidden && magnificationProgress == 0
+        return DockReservation(displayID: screen.displayID, edge: edge,
+                               thickness: barThickness(), isHiddenOrAutoHiding: tucked)
+    }
+
     private var magnificationRestCross: CGFloat = 0
     private var magnificationProgress: CGFloat = 0
     private var magnificationTarget: CGFloat = 0
