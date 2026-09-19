@@ -380,3 +380,20 @@ DockButton.indicator(mode:isLauncher:isRunning:windowCount:vertical:)
 
 自检 `--check-merged-indicators` 已覆盖：0–4 个窗口、空心胶囊的横向与纵向、两种模式下的「运行但无窗口」、已退出无标记、启动器无标记。
 
+### 跨 Space 移窗在本机不可用（2026-09-20 实测）
+
+为「单实例应用在其他桌面」增加「搬移至当前桌面」策略时，先验证底层能力，结论是**本机 macOS 27 上做不到**：
+
+| 路径 | 结果 |
+| --- | --- |
+| `CGSAddWindowsToSpaces` / `CGSRemoveWindowsFromSpaces` | 符号存在（SkyLight 与 CoreGraphics 均可 `dlsym`），但调用**无任何效果** |
+| `CGSSetWindowListWorkspace` | 返回 `kCGErrorIllegalArgument (1006)` |
+| 窗口菜单 | 无「移到桌面」类菜单项（Safari / Finder 均只有「将标签页移到新窗口」） |
+| 系统 Dock 项的 AX 属性 | 只有 `AXPress` / `AXShowMenu` / `AXShowExpose`，没有桌面分配属性 |
+
+判别实验最能说明问题：**把窗口从它当前所在的 Space 移除**都毫无变化（`spaces(of:)` 仍返回原 Space），而同一套读接口（`CGSCopySpacesForWindows`，mask `0x7`）工作正常。也就是说这不是参数或顺序问题，而是**写接口在本机被禁用或未实现**——写入不做任何事，也不报错，因此无法靠返回值判断失败。
+
+验证环境：内置屏单显示器、两个普通桌面（ManagedSpaceID 3 与 7）+ 一个全屏空间（489）；测试工具已确认 `AXIsProcessTrusted=true`，排除权限因素。
+
+**结论**：该策略未实现，已把探针代码全部撤销；`AGENTS.md` 中「跨 Space 移窗尚未实现」的判断在本机仍然成立。若将来要重试，应先写一个只做「从当前 Space 移除」的判别实验——它比端到端搬移更快证伪，且不会留下半成品。
+
