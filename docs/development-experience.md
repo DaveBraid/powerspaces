@@ -68,3 +68,7 @@
 - 根因证据：`SLSPostBroadcastNotification`（`CGSPostBroadcastNotification` 的同一入口）只发单向 Mach 消息；返回 0 是发送成功。WindowServer 的 `_CGXPostBroadcastNotification` 对连接资格做检查，普通实验进程未获投递；只重发当前矩形、给同一消息补回复端口后，实测 `transport=0 reply_id=30222 server_result=1000 (0x3e8)`。不可把传输成功当作服务端授权成功，也不能仅按符号存在启用功能。
 - 原型与日志保留在 `/tmp/ps-dock-workarea-study/`：`observer.m` / `observer-run.log`（提前启动、标准事件循环）、`external-run.log`（有独立看门狗恢复）、`ack.m` / `ack.log`（实际拒绝码）；临时路径非仓库依赖。回复诊断使用本机构建反汇编核对的私有函数相对地址，只可用于这次实验，不能进入生产代码。
 - 所有测试已恢复底部 79 点并由独立进程回读。未验证其他方向、自动隐藏和普通应用；第二屏仅确认未受底部实验影响，不代表支持逐屏预留。当前不接入仅改变服务器、无法同步现有应用的半成品，也不接管原生 Dock 的特权连接；待找到并验证允许 PS 使用的刷新路径后再实现版本探测、恢复和失败回退。正式 PS 无此工作区写入逻辑。
+
+- 后续刷新路径排查（同一构建）：公开显示配置事务提交原有显示器坐标，返回成功但提前运行的 AppKit 观察进程仍保留旧工作区；未改变分辨率／排列，实验后独立回读恢复 79 点。日志为 `noop.log`、`observer-noop.log`。事务作用域参见 [Apple CGConfigureOption](https://developer.apple.com/documentation/coregraphics/cgconfigureoption)，不能靠成功返回判断缓存已刷新。
+- `SLSSpaceSetEdgeReservation` 的 WindowServer fallback `_XSpaceSetEdgeReservation` 仅在空间是自身所属平铺管理对象且其类型为 4 时更新预留，否则也返回 0；本机普通桌面只读类型为 0。此入口不是已验证的普通桌面通用预留接口；现代 bridged 路径尚未证明可用于普通桌面，不调用未知参数污染用户空间。
+- 系统 Dock 在传统矩形广播后还向 `WindowManager.ExposeCoordinator.setDockInfo` 传递显示器、当前／最大 inset 和方向；该路线经 `AdminXPCConnection.xpcSetDockInfo`，`AdminXPCListener` 在接受连接前检查 `com.apple.private.windowmanager` entitlement。只读反汇编确认该检查，没有尝试伪造签名或取得该权限；不能把此入口当作第三方可用替代通知。
