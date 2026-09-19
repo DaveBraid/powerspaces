@@ -188,6 +188,7 @@ final class Preferences: ObservableObject {
         static let hideAppleDock = "hideAppleDock"
         static let windowLayoutInterception = "windowLayoutInterception"
         static let windowDisplayMode = "windowDisplayMode"
+        static let jumpModifier = "jumpModifier"
         static let fasterDesktopSwitch = "fasterDesktopSwitch"
         static let fasterKeyboardSwitch = "fasterKeyboardSwitch"
         // Internal bookkeeping (not user-facing): set while we've disabled the
@@ -295,6 +296,8 @@ final class Preferences: ObservableObject {
             K.windowLayoutInterception: false,
             // 保持既有行为：默认每个窗口一个图标。
             K.windowDisplayMode: WindowDisplayMode.split.rawValue,
+            // 单实例应用在其他桌面时，按住它点击 = 直接跳过去（不套用新建窗口策略）。
+            K.jumpModifier: ForceNewModifier.control.rawValue,
             K.fasterDesktopSwitch: false,
             K.fasterKeyboardSwitch: false,
             K.appLauncherEnabled: true,
@@ -502,6 +505,10 @@ final class Preferences: ObservableObject {
     var windowLayoutInterception: Bool { get { bln(K.windowLayoutInterception) } set { setBln(newValue, K.windowLayoutInterception) } }
     /// 多窗口应用在程序坞里的呈现方式：拆分（每窗口一图标）或合并（每应用一图标，
     /// 窗口数用圆点表示）。合并模式下不再显示窗口数量角标，避免重复表达。
+    /// 「跳转修饰键」：按住它点击程序坞图标时，不去新建窗口，而是直接跳到应用所在的桌面。
+    /// 仅在应用窗口位于其他桌面且已开启拦截时生效；默认 Control（避开「强制新建」用的 Shift/Option）。
+    var jumpModifier: ForceNewModifier { get { raw(K.jumpModifier, .control) } set { setRaw(newValue, K.jumpModifier) } }
+
     var windowDisplayMode: WindowDisplayMode {
         get { raw(K.windowDisplayMode, .split) }
         set { setRaw(newValue, K.windowDisplayMode) }

@@ -70,21 +70,27 @@ public enum LaunchEngine {
         target: AppTarget,
         snapshot: SpaceSnapshot,
         config: StrategyConfig,
-        forceNew: Bool
+        forceNew: Bool,
+        jump: Bool = false
     ) -> LaunchDecision {
         decide(state: AppState.classify(target: target, snapshot: snapshot),
-               config: config, target: target, forceNew: forceNew)
+               config: config, target: target, forceNew: forceNew, jump: jump)
     }
 
     /// The smart-launch transition table: one named state in, one pure decision out.
     /// `forceNew` (shift/option, or the CLI `--new`) is the only modifier — it turns
     /// a window that's *here* into a fresh-window request instead of a focus.
+    /// - Parameter jump: 按下「跳转修饰键」（默认 Control）后的强制行为——不套用该应用的
+    ///   新建窗口策略，直接接受跳到它所在桌面的聚焦。仅对「窗口在其他桌面」生效；
+    ///   已在本桌面或未运行时不改变原有语义。
     public static func decide(
         state: AppState,
         config: StrategyConfig,
         target: AppTarget,
-        forceNew: Bool
+        forceNew: Bool,
+        jump: Bool = false
     ) -> LaunchDecision {
+        if jump, case .windowElsewhere = state { return .newWindow(.focusOnly) }
         switch state {
         // A window already here → focus that exact window (no Space switch), unless
         // the caller explicitly asked for a brand-new window.

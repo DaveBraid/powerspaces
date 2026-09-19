@@ -1701,6 +1701,42 @@ h.test("window count follows the current Space only") {
          "the other Space sees its own window")
 }
 
+print("Jump modifier")
+h.test("the jump modifier focuses the app's desktop instead of the configured strategy") {
+    // 窗口在其他桌面 + 按住跳转键 → 强制 focusOnly，不套用应用自己的新建窗口策略。
+    let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: [
+        dwin(9, 900, name: "Demo", bundle: "demo.one",
+             rect: CGRect(x: 100, y: 100, width: 400, height: 300), onscreen: false, spaces: [2]),
+    ])
+    let target = AppTarget(bundleID: "demo.one", name: "Demo")
+    // 该应用的策略是「新建实例」：不按跳转键时走新建，按下才改为直接聚焦。
+    let config = StrategyConfig(byBundleID: [
+        "demo.one": AppStrategy(bundleID: "demo.one", strategy: .newInstance),
+    ], defaultKind: .warn)
+
+    let plain = LaunchEngine.decide(target: target, snapshot: snapshot, config: config, forceNew: false)
+    h.eq(plain, .newWindow(.newInstance), "without the jump key the app's own strategy runs")
+    let jumped = LaunchEngine.decide(target: target, snapshot: snapshot, config: config,
+                                     forceNew: false, jump: true)
+    h.eq(jumped, .newWindow(.focusOnly), "with the jump key it focuses and accepts the Space switch")
+}
+
+h.test("the jump modifier does not change the here / not-running cases") {
+    let target = AppTarget(bundleID: "demo.one", name: "Demo")
+    let config = StrategyConfig(byBundleID: [:], defaultKind: .warn)
+    // 窗口就在当前桌面：跳转键不改变「聚焦这个窗口」。
+    let here = SpaceSnapshot(activeSpaceID: 1, windows: [
+        dwin(9, 900, name: "Demo", bundle: "demo.one",
+             rect: CGRect(x: 100, y: 100, width: 400, height: 300), spaces: [1]),
+    ])
+    h.eq(LaunchEngine.decide(target: target, snapshot: here, config: config, forceNew: false, jump: true),
+         .focusWindow(windowID: 9, pid: 900), "a window here still just focuses")
+    // 未运行：跳转键不改变「直接启动」。
+    let idle = SpaceSnapshot(activeSpaceID: 1, windows: [])
+    h.eq(LaunchEngine.decide(target: target, snapshot: idle, config: config, forceNew: false, jump: true),
+         .launchApp, "not running still cold-launches")
+}
+
 print("Window layout geometry")
 h.test("dock reservation only subtracts space the system has not already reserved") {
     // 主屏实测：物理边界 2560x1440，系统可用区 y=30..1361（已扣菜单栏与 macOS 自己的

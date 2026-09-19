@@ -326,7 +326,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                displayUUID: displayUUID, spaceUUID: space)
             }
         }
-        dock.onSelect = { [weak self] app, forceNew in
+        dock.onSelect = { [weak self] app, forceNew, jump in
             guard let self else { return }
             // A per-window icon ("Windows" feature) carries the exact window to
             // act on; a normal icon routes through the smart-launch decision. The
@@ -343,7 +343,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                          target: app.target, forceNew: forceNew,
                                                          preferredDisplay: bounds)
                 }
-                return try? launcher.dockClick(target: app.target, forceNew: forceNew,
+                return try? launcher.dockClick(target: app.target, forceNew: forceNew, jump: jump,
                                                preferredDisplay: bounds, dockSpace: dockSpace)
             }
         }

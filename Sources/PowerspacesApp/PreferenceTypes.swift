@@ -127,13 +127,14 @@ enum RunningIndicator: String, CaseIterable, Identifiable {
 }
 
 enum ForceNewModifier: String, CaseIterable, Identifiable {
-    case shiftOrOption, shift, option
+    case shiftOrOption, shift, option, control
     var id: String { rawValue }
     func isPressed(_ flags: NSEvent.ModifierFlags) -> Bool {
         switch self {
         case .shiftOrOption: return flags.contains(.shift) || flags.contains(.option)
         case .shift: return flags.contains(.shift)
         case .option: return flags.contains(.option)
+        case .control: return flags.contains(.control)
         }
     }
     var label: String {
@@ -141,6 +142,7 @@ enum ForceNewModifier: String, CaseIterable, Identifiable {
         case .shiftOrOption: return L10n.string("Shift or Option")
         case .shift: return L10n.string("Shift only")
         case .option: return L10n.string("Option only")
+        case .control: return L10n.string("Control only")
         }
     }
 }

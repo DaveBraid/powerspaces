@@ -169,7 +169,7 @@ final class DockButton: NSButton {
     var onMiddleClick: (() -> Void)?
     /// A plain click (short press, no drag): activate the app. `forceNew` is set
     /// when shift/option is held.
-    var onActivate: ((DockApp, Bool) -> Void)?
+    var onActivate: ((DockApp, Bool, Bool) -> Void)? // (app, forceNew, jump)
     var onBeginDrag: ((DockButton) -> Void)?
     var onDragMove: ((DockButton, NSPoint) -> Void)?
     var onEndDrag: ((DockButton) -> Void)?
@@ -223,11 +223,13 @@ final class DockButton: NSButton {
     private func activate(with event: NSEvent) {
         guard let app else { return }
         let forceNew = Preferences.shared.forceNewModifier.isPressed(event.modifierFlags)
+        // 跳转修饰键（默认 Control）：按住点击不去新建窗口，而是直接跳到应用所在桌面。
+        let jump = Preferences.shared.jumpModifier.isPressed(event.modifierFlags)
         // Acknowledge a launch / new-window click with a quick Dock-style bounce, so a
         // slow cold launch gives instant feedback. A click that just focuses a window
         // already on this desktop needs none (the window comes forward on its own).
         if !app.isLauncher, forceNew || app.windowCount == 0 { playLaunchFeedback() }
-        onActivate?(app, forceNew)
+        onActivate?(app, forceNew, jump)
     }
 
     /// A quick hop toward the screen center (like the macOS Dock's launch bounce),

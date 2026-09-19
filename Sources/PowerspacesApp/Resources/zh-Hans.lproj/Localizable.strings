@@ -658,3 +658,8 @@
 "One icon per window" = "每个窗口一个图标";
 "One icon per app" = "每个应用一个图标";
 "One icon per window keeps a separate item for each window (named by its title when titles are on). One icon per app keeps a single item and shows the window count with dots instead." = "「每个窗口一个图标」为每个窗口保留独立图标（开启标题时以窗口标题命名）；「每个应用一个图标」只保留一个图标，窗口数量用圆点表示。";
+
+// 跳转修饰键（按住点击直接跳到应用所在桌面）。
+"Jump to the app's desktop" = "跳到应用所在桌面";
+"Hold this key while clicking a dock icon to switch to the desktop the app is on instead of opening a window here. Only applies when the app's window is on another desktop." = "按住该键点击程序坞图标时，直接切换到应用所在的桌面，而不是在当前桌面新建窗口。仅在应用窗口位于其他桌面时生效。";
+"Control only" = "仅 Control";

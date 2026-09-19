@@ -637,6 +637,12 @@ struct PreferencesView: View {
                                + "its title when titles are on). One icon per app keeps a single item "
                                + "and shows the window count with dots instead."),
                            bind(\.windowDisplayMode)) { $0.label }
+                enumPicker(L10n.string("Jump to the app's desktop"),
+                           help: L10n.string(
+                               "Hold this key while clicking a dock icon to switch to the desktop "
+                               + "the app is on instead of opening a window here. Only applies when "
+                               + "the app's window is on another desktop."),
+                           bind(\.jumpModifier)) { $0.label }
                 Toggle(L10n.string("Show an icon per open window"), isOn: bind(\.showIconPerWindow))
                     .help(L10n.string("Duplicate an app's icon for each window it has on this desktop."))
                     .disabled(prefs.windowDisplayMode != .split)

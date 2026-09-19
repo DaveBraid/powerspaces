@@ -395,5 +395,11 @@ DockButton.indicator(mode:isLauncher:isRunning:windowCount:vertical:)
 
 验证环境：内置屏单显示器、两个普通桌面（ManagedSpaceID 3 与 7）+ 一个全屏空间（489）；测试工具已确认 `AXIsProcessTrusted=true`，排除权限因素。
 
-**结论**：该策略未实现，已把探针代码全部撤销；`AGENTS.md` 中「跨 Space 移窗尚未实现」的判断在本机仍然成立。若将来要重试，应先写一个只做「从当前 Space 移除」的判别实验——它比端到端搬移更快证伪，且不会留下半成品。
+外部资料印证了这一点（同一结论已被主流窗口管理器确认）：
+
+- [yabai #2500 "Moving windows without SIP disabled stopped working since Sequoia"](https://github.com/koekeishiya/yabai/issues/2500) —— 自 macOS 15 起，**不关闭 SIP 就无法用这套私有接口移窗**。
+- yabai 的 [Disabling System Integrity Protection](https://github.com/asmvik/yabai/wiki/Disabling-System-Integrity-Protection) 说明：它的 `window --space` 等空间操作依赖关闭 SIP 的脚本附加件。
+- [DockLift 的 SpaceMover](file:///Users/ethanlee/Documents/Codex/2026-09-18/referenced-chatgpt-conversation-this-is-an/work/DockLift-SpaceMover.swift) 也自述这是 best-effort：用 `CGSMoveWindowsToManagedSpace` / `CGSAddWindowsToSpaces` 之后**必须用公开的 `CGWindowList` 复核**，因为「on recent systems the CGS path may silently no-op for windows the process does not own」。我按它的写法（`CGSMoveWindowsToManagedSpace(cid, windows, spaceID: UInt64)`）复测，仍为 no-op——与 SIP 未关闭一致。
+
+**结论**：该策略在本机不可实现，且 `AGENTS.md` 明确要求「日常增强不应要求关闭 SIP」，因此不纳入。探针代码已全部撤销；`AGENTS.md` 中「跨 Space 移窗尚未实现」的判断在本机仍然成立。若将来在关闭 SIP 的机器上重试，应先写一个只做「从当前 Space 移除」的判别实验——它比端到端搬移更快证伪，且不会留下半成品。
 

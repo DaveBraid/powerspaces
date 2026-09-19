@@ -232,7 +232,7 @@ extension DockPanel: NSMenuDelegate {
     @objc private func closeWindow(_ s: NSMenuItem) { route(s, onCloseWindow) }
     @objc private func openNewWindow(_ s: NSMenuItem) {
         guard let app = s.representedObject as? DockApp else { return }
-        onSelect?(app, true)
+        onSelect?(app, true, false)
     }
     @objc private func openLauncherMenu(_ s: NSMenuItem) { onOpenLauncher?() }
     @objc private func disableLauncherMenu(_ s: NSMenuItem) { onDisableLauncher?() }
@@ -251,7 +251,7 @@ extension DockPanel: NSMenuDelegate {
         guard !app.isLauncher else { return }
         switch Preferences.shared.middleClickAction {
         case .newWindow:
-            onSelect?(app, true) // force a brand-new window, like the menu's "Open new window"
+            onSelect?(app, true, false) // force a brand-new window, like the menu's "Open new window"
         case .quitThisDesktop:
             onCloseThisDesktop?(app)
         case .quitAllDesktops:

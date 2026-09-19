@@ -19,7 +19,7 @@ final class DockPanel: NSPanel {
     var onPreviewWindows: ((DockApp, String, @escaping ([WindowInfo]?) -> Void) -> Void)?
     var onPreviewSelect: ((DockApp, CGWindowID, String) -> Void)?
     var previewGlassFrame: NSRect { convertToScreen(effect.convert(effect.bounds, to: nil)) }
-    var onSelect: ((DockApp, Bool) -> Void)?
+    var onSelect: ((DockApp, Bool, Bool) -> Void)?
     var onPinHere: ((DockApp) -> Void)?
     var onPinEverywhere: ((DockApp) -> Void)?
     /// "Unpin (this desktop)" on an all-desktops pin: hide it on this desktop only
@@ -748,9 +748,9 @@ final class DockPanel: NSPanel {
             if !perWindow, !merged, !app.isLauncher, app.windowCount > 1 {
                 button.setWindowBadge(count: app.windowCount)
             }
-            button.onActivate = { [weak self] app, forceNew in
+            button.onActivate = { [weak self] app, forceNew, jump in
                 if let self { WindowHoverPreview.shared.close(for: self) }
-                if app.isLauncher { self?.onOpenLauncher?() } else { self?.onSelect?(app, forceNew) }
+                if app.isLauncher { self?.onOpenLauncher?() } else { self?.onSelect?(app, forceNew, jump) }
             }
             button.onRightClick = { [weak self] in self?.showMenu(for: app, from: button) }
             button.onMiddleClick = { [weak self] in self?.handleMiddleClick(app) }

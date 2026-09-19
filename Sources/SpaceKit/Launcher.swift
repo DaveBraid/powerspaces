@@ -71,7 +71,7 @@ public struct Launcher {
     /// the display this dock lives on) makes a new window land on *this* screen on
     /// a multi-display setup — see `placeNewWindowHere`.
     @discardableResult
-    public func dockClick(target: AppTarget, forceNew: Bool,
+    public func dockClick(target: AppTarget, forceNew: Bool, jump: Bool = false,
                           preferredDisplay: CGRect? = nil, dockSpace: SpaceID? = nil) throws -> LaunchOutcome {
         let snapshot = try provider.snapshot()
         // Classify once with the live frontmost app folded in, so the logged state
@@ -84,8 +84,9 @@ public struct Launcher {
         let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         let state = AppState.classify(target: target, snapshot: snapshot, frontmostPID: frontmostPID,
                                       currentSpace: dockSpace)
-        Log.debug("dock-click \(target.bundleID ?? target.name ?? "?") — state \(state.label) forceNew=\(forceNew)")
-        let decision = LaunchEngine.decide(state: state, config: config, target: target, forceNew: forceNew)
+        Log.debug("dock-click \(target.bundleID ?? target.name ?? "?") — state \(state.label) forceNew=\(forceNew) jump=\(jump)")
+        let decision = LaunchEngine.decide(state: state, config: config, target: target,
+                                           forceNew: forceNew, jump: jump)
         let isFrontmost: Bool = {
             guard case let .focusWindow(_, pid) = decision else { return false }
             return frontmostPID == pid
