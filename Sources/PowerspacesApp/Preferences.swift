@@ -189,6 +189,7 @@ final class Preferences: ObservableObject {
         static let windowLayoutInterception = "windowLayoutInterception"
         static let windowDisplayMode = "windowDisplayMode"
         static let jumpModifier = "jumpModifier"
+        static let moveActivatedAppToCurrentDesktop = "moveActivatedAppToCurrentDesktop"
         static let fasterDesktopSwitch = "fasterDesktopSwitch"
         static let fasterKeyboardSwitch = "fasterKeyboardSwitch"
         // Internal bookkeeping (not user-facing): set while we've disabled the
@@ -298,6 +299,8 @@ final class Preferences: ObservableObject {
             K.windowDisplayMode: WindowDisplayMode.split.rawValue,
             // 单实例应用在其他桌面时，按住它点击 = 直接跳过去（不套用新建窗口策略）。
             K.jumpModifier: ForceNewModifier.control.rawValue,
+            // 依赖系统设置先关闭「切换到应用程序时切换空间」，因此默认关闭。
+            K.moveActivatedAppToCurrentDesktop: false,
             K.fasterDesktopSwitch: false,
             K.fasterKeyboardSwitch: false,
             K.appLauncherEnabled: true,
@@ -505,6 +508,16 @@ final class Preferences: ObservableObject {
     var windowLayoutInterception: Bool { get { bln(K.windowLayoutInterception) } set { setBln(newValue, K.windowLayoutInterception) } }
     /// 多窗口应用在程序坞里的呈现方式：拆分（每窗口一图标）或合并（每应用一图标，
     /// 窗口数用圆点表示）。合并模式下不再显示窗口数量角标，避免重复表达。
+    /// 激活应用时把它的窗口搬到当前桌面。
+    ///
+    /// 适用于任何「已经运行在其它桌面」的应用：Spotlight、程序坞、任何启动方式激活它时，
+    /// 把它的窗口搬过来而不是让你切过去。需要系统设置里关闭
+    /// 「切换到应用程序时，切换到有打开窗口的空间」，否则系统会先跳转。
+    var moveActivatedAppToCurrentDesktop: Bool {
+        get { bln(K.moveActivatedAppToCurrentDesktop) }
+        set { setBln(newValue, K.moveActivatedAppToCurrentDesktop) }
+    }
+
     /// 「跳转修饰键」：按住它点击程序坞图标时，不去新建窗口，而是直接跳到应用所在的桌面。
     /// 仅在应用窗口位于其他桌面且已开启拦截时生效；默认 Control（避开「强制新建」用的 Shift/Option）。
     var jumpModifier: ForceNewModifier { get { raw(K.jumpModifier, .control) } set { setRaw(newValue, K.jumpModifier) } }

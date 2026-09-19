@@ -228,6 +228,8 @@ struct PreferencesView: View {
         .init(name: "Window previews", tab: 2, keywords: "preview thumbnail screen recording 窗口预览 缩略图 屏幕录制 权限"),
         .init(name: "Enable magnification", tab: 2, keywords: "magnify scale zoom 缩放 放大 倍率"),
         .init(name: "Icon animation", tab: 2, keywords: "add remove poof slide fade"),
+        .init(name: "Move an activated app's windows to this desktop", tab: 3,
+              keywords: "activate spotlight switch space move desktop 激活 聚焦 搬到 桌面 切换 空间"),
         .init(name: "Show an icon per window", tab: 3, keywords: "windows multiple"),
         .init(name: "Show window titles", tab: 3, keywords: "label taskbar title"),
         .init(name: "Show hidden apps", tab: 3, keywords: "hidden"),
@@ -643,6 +645,31 @@ struct PreferencesView: View {
                                + "the app is on instead of opening a window here. Only applies when "
                                + "the app's window is on another desktop."),
                            bind(\.jumpModifier)) { $0.label }
+                // 与下面的窗口策略说明相邻，便于和按应用的「搬到本桌面」对照。
+                Toggle(L10n.string("Move an activated app's windows to this desktop"),
+                       isOn: bind(\.moveActivatedAppToCurrentDesktop))
+                    .help(L10n.string(
+                        "When an app is already running on another desktop, activating it (from "
+                        + "Spotlight, the dock, or anywhere else) brings its windows to the desktop "
+                        + "you're on instead of switching you over. Needs “When switching to an "
+                        + "application, switch to a Space with open windows for the application” "
+                        + "turned off in System Settings → Desktop & Dock → Mission Control, otherwise "
+                        + "macOS switches first. Unlike the per-app “Move it to this desktop” "
+                        + "strategy, this applies to every app automatically."))
+                if prefs.moveActivatedAppToCurrentDesktop, SpacesSwitchOnActivate.isOn {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(L10n.string(
+                            "This needs “When switching to an application, switch to a Space with open"
+                            + " windows for the application” turned off in System Settings, or apps "
+                            + "will still switch to their own desktop."))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Button(L10n.string("Open Desktop & Dock settings")) {
+                            SpacesSwitchOnActivate.openDesktopSettings()
+                        }
+                        .controlSize(.small)
+                    }
+                }
                 Toggle(L10n.string("Show an icon per open window"), isOn: bind(\.showIconPerWindow))
                     .help(L10n.string("Duplicate an app's icon for each window it has on this desktop."))
                     .disabled(prefs.windowDisplayMode != .split)

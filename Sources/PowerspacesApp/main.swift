@@ -70,6 +70,9 @@ if CommandLine.arguments.contains("--check-window-layout") {
 if CommandLine.arguments.contains("--check-appearance") {
     exit(DevelopmentTools.checkAppearance() ? 0 : 1)
 }
+if CommandLine.arguments.contains("--check-activated-app-move") {
+    exit(DevelopmentTools.checkActivatedAppMove() ? 0 : 1)
+}
 if CommandLine.arguments.contains("--check-localization") {
     exit(DevelopmentTools.checkLocalization() ? 0 : 1)
 }

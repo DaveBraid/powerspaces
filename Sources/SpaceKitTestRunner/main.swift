@@ -1731,6 +1731,119 @@ h.test("the process-level move reports failure instead of silently doing nothing
     }
 }
 
+print("Move an activated app's windows here")
+h.test("a foreground change is only recognised as a real activation") {
+    // 同一应用连续两次轮询：不是新的激活（否则会反复搬）。
+    h.ok(!ActivatedAppMover.ForegroundChange(previousPID: 7, currentPID: 7, ownPID: 1)
+        .isNewActivation, "same pid is not a new activation")
+    // 换到另一个应用：是新的激活。
+    h.ok(ActivatedAppMover.ForegroundChange(previousPID: 7, currentPID: 9, ownPID: 1)
+        .isNewActivation, "a different pid is a new activation")
+    // PowerSpaces 自己成为前台（点设置窗口等）：不处理。
+    h.ok(!ActivatedAppMover.ForegroundChange(previousPID: 7, currentPID: 1, ownPID: 1)
+        .isNewActivation, "our own activation is ignored")
+    // 没有前台（全部隐藏等）：不处理。
+    h.ok(!ActivatedAppMover.ForegroundChange(previousPID: 7, currentPID: nil, ownPID: 1)
+        .isNewActivation, "no frontmost app is not an activation")
+    // 冷启动后的第一次轮询：算一次激活（此时不存在"切桌面"误判，另有 Space 时间窗把关）。
+    h.ok(ActivatedAppMover.ForegroundChange(previousPID: nil, currentPID: 9, ownPID: 1)
+        .isNewActivation, "the first observation counts as an activation")
+}
+
+h.test("an app that only lives on another desktop is moved when activated") {
+    // 当前桌面 1；应用只在桌面 2 有窗口 → 搬。
+    let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: [
+        dwin(11, 111, name: "Demo", bundle: "demo.one",
+             rect: CGRect(x: 10, y: 10, width: 400, height: 300), onscreen: false, spaces: [2]),
+    ])
+    var moved: [(pid_t, SpaceID)] = []
+    let mover = ActivatedAppMover(
+        isEnabled: { true },
+        spaceRecentlyChanged: { false },
+        available: { true },
+        move: { pid, space, _ in moved.append((pid, space)); return space })
+    let outcome = mover.consider(
+        .init(activeSpaceID: 1, target: AppTarget(bundleID: "demo.one", name: "Demo"),
+              pid: 111, confirmSpaces: { _ in [] }),
+        snapshot: snapshot)
+    h.eq(outcome, .moved, "moves an app that is only elsewhere")
+    h.eq(moved.count, 1, "calls the move exactly once")
+    h.eq(moved.first?.1, 1, "moves it to the current desktop")
+}
+
+h.test("an app already on this desktop is left alone") {
+    let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: [
+        dwin(11, 111, name: "Demo", bundle: "demo.one",
+             rect: CGRect(x: 10, y: 10, width: 400, height: 300), spaces: [1]),
+        dwin(12, 111, name: "Demo", bundle: "demo.one",
+             rect: CGRect(x: 20, y: 20, width: 400, height: 300), onscreen: false, spaces: [2]),
+    ])
+    var called = false
+    let mover = ActivatedAppMover(
+        isEnabled: { true }, spaceRecentlyChanged: { false }, available: { true },
+        move: { _, space, _ in called = true; return space })
+    h.eq(mover.consider(
+        .init(activeSpaceID: 1, target: AppTarget(bundleID: "demo.one", name: "Demo"),
+              pid: 111, confirmSpaces: { _ in [] }),
+        snapshot: snapshot), .alreadyHere, "a window here means nothing to move")
+    h.ok(!called, "does not touch the mover at all")
+}
+
+h.test("a desktop switch is never mistaken for an activation") {
+    let snapshot = SpaceSnapshot(activeSpaceID: 2, windows: [
+        dwin(11, 111, name: "Demo", bundle: "demo.one",
+             rect: CGRect(x: 10, y: 10, width: 400, height: 300), onscreen: false, spaces: [1]),
+    ])
+    var called = false
+    let mover = ActivatedAppMover(
+        isEnabled: { true }, spaceRecentlyChanged: { true }, available: { true },
+        move: { _, space, _ in called = true; return space })
+    h.eq(mover.consider(
+        .init(activeSpaceID: 2, target: AppTarget(bundleID: "demo.one", name: "Demo"),
+              pid: 111, confirmSpaces: { _ in [] }),
+        snapshot: snapshot), .spaceChanged, "the space just changed, so do nothing")
+    h.ok(!called, "never moves while the space is settling")
+}
+
+h.test("the feature stays inert when disabled or when the API is missing") {
+    let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: [
+        dwin(11, 111, name: "Demo", bundle: "demo.one",
+             rect: CGRect(x: 10, y: 10, width: 400, height: 300), onscreen: false, spaces: [2]),
+    ])
+    var called = false
+    let move: (pid_t, SpaceID, @escaping (pid_t) -> Set<SpaceID>) throws -> SpaceID = { _, space, _ in
+        called = true
+        return space
+    }
+    let input = ActivatedAppMover.Input(
+        activeSpaceID: 1, target: AppTarget(bundleID: "demo.one", name: "Demo"),
+        pid: 111, confirmSpaces: { _ in [] })
+    let disabled = ActivatedAppMover(
+        isEnabled: { false }, spaceRecentlyChanged: { false }, available: { true }, move: move)
+    h.eq(disabled.consider(input, snapshot: snapshot), .disabled, "off by default / when disabled")
+    let missingAPI = ActivatedAppMover(
+        isEnabled: { true }, spaceRecentlyChanged: { false }, available: { false }, move: move)
+    h.eq(missingAPI.consider(input, snapshot: snapshot), .unavailable,
+         "degrades quietly when the system lacks the symbol")
+    h.ok(!called, "neither case touches the mover")
+}
+
+h.test("a failed move is reported and never retried") {
+    let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: [
+        dwin(11, 111, name: "Demo", bundle: "demo.one",
+             rect: CGRect(x: 10, y: 10, width: 400, height: 300), onscreen: false, spaces: [2]),
+    ])
+    var attempts = 0
+    let mover = ActivatedAppMover(
+        isEnabled: { true }, spaceRecentlyChanged: { false }, available: { true },
+        move: { _, _, _ in attempts += 1; throw WindowSpaceMover.MoveError.notMoved })
+    h.eq(mover.consider(
+        .init(activeSpaceID: 1, target: AppTarget(bundleID: "demo.one", name: "Demo"),
+              pid: 111, confirmSpaces: { _ in [] }),
+        snapshot: snapshot), .notMoved, "a refused move reports failure")
+    h.eq(attempts, 1, "and does not retry")
+}
+
 print("Jump modifier")
 h.test("the jump modifier focuses the app's desktop instead of the configured strategy") {
     // 窗口在其他桌面 + 按住跳转键 → 强制 focusOnly，不套用应用自己的新建窗口策略。

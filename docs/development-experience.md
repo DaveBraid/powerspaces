@@ -445,3 +445,25 @@ nm -u /System/Library/CoreServices/Dock.app/Contents/MacOS/Dock | grep -i space
 
 实测（`AXPress` 驱动 PS 坞图标的右键菜单）：点击「已在其他桌面打开时 → 搬到本桌面（实验性）」后 `config.json` 从 `"strategy": "warn"` 变为 `"moveHere"`，说明菜单项与设置项走同一条写入路径。
 
+### 激活应用时把它的窗口搬到当前桌面（2026-09-20）
+
+系统设置关闭「切换到应用程序时，切换到有打开窗口的空间」（`AppleSpacesSwitchOnActivate = 0`）后，激活已在他桌面的应用不再跳转；本功能补齐最后一环——把那个应用的窗口搬到当前桌面。
+
+**检测方式（关键教训）**：本机 macOS 27 上 `NSWorkspace.didActivateApplicationNotification` 与 `activeSpaceDidChangeNotification` **都不送达**——不只是应用收不到，独立进程监听 `NSWorkspace.notificationCenter` 的全部通知也是零回调（前台确实变了）。因此检测落在**已有的有限轮询**里：只比较相邻两次前台 pid（`ActivatedAppMover.ForegroundChange`），不新增计时器。
+
+**「切桌面」的排除**：不能用时间窗。实测 `open -a` 触发的激活可能发生在启动后 53ms，此时"最近一次 Space 变化"就是启动时那次 nil→初始值的记录，时间窗会把正常激活误判成切桌面。改为**直接比较 Space ID**：与上次判定时的 Space 不同就不搬（`lastCheckedSpaceID`）。
+
+**实机验证**（内建屏，Desktop 1 = space 3、Desktop 2 = space 7；用「系统设置」作对象，`open -a` 触发激活与 Spotlight 等价）：
+
+| 场景 | 结果 |
+| --- | --- |
+| 窗口在桌面 2、当前在桌面 1，激活 | `spaces=[7] → [3]`、`onscreen=true`，桌面未变 |
+| 已在当前桌面，再次激活 | `[7] → [7]`，不重复搬（幂等） |
+| 窗口在桌面 2、切到桌面 1 后激活 | 留在 `[7]`，未搬（Space 变化守卫生效） |
+| 关闭开关后同样操作 | 留在 `[7]`，不动 |
+| 系统开关设为 1 时 | 系统未按预期跳转（本机该设置似乎不生效），但功能仍会搬；界面据 `AppleSpacesSwitchOnActivate` 给出提示 |
+
+**只读系统设置**：`SpacesSwitchOnActivate` 只读不写。判定抽成纯函数 `decide(stored:)`（缺失按开启），因为 `UserDefaults(suiteName:)` 仍会回退全局域，真实系统上无法构造"缺失"这一输入——这一点是被 `--check-activated-app-move` 抓出来的。
+
+新增检查：`swift run --build-system native PowerspacesApp --check-activated-app-move`（偏好默认关闭、可持久化、系统开关三种状态）。
+

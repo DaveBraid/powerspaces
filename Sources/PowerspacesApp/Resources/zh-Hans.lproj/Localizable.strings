@@ -669,3 +669,9 @@
 
 // 「搬到本桌面」依赖未公开接口，界面上标注为实验性。
 "Move it to this desktop (experimental)" = "搬到本桌面（实验性）";
+
+// 激活应用时把它的窗口搬到当前桌面。
+"Move an activated app's windows to this desktop" = "激活应用时把它的窗口搬到当前桌面";
+"When an app is already running on another desktop, activating it (from Spotlight, the dock, or anywhere else) brings its windows to the desktop you're on instead of switching you over. Needs “When switching to an application, switch to a Space with open windows for the application” turned off in System Settings → Desktop & Dock → Mission Control, otherwise macOS switches first. Unlike the per-app “Move it to this desktop” strategy, this applies to every app automatically." = "应用已在其它桌面运行时，激活它（Spotlight、程序坞或任何方式）会把它的窗口搬到你现在所在的桌面，而不是把你切过去。需要先在系统设置 → 桌面与程序坞 → 调度中心里关闭「切换到应用程序时，切换到有打开窗口的空间」，否则 macOS 会先跳转。与按应用配置的「搬到本桌面」策略不同：这个对所有应用自动生效。";
+"This needs “When switching to an application, switch to a Space with open windows for the application” turned off in System Settings, or apps will still switch to their own desktop." = "需要先在系统设置里关闭「切换到应用程序时，切换到有打开窗口的空间」，否则应用仍会跳转到它自己的桌面。";
+"Open Desktop & Dock settings" = "打开「桌面与程序坞」设置";

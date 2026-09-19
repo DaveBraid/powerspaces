@@ -605,6 +605,39 @@ enum DevelopmentTools {
         return failures == 0
     }
 
+    /// 校验「激活应用时把它的窗口搬到当前桌面」的偏好键：默认关闭、可持久化，
+    /// 以及系统开关的读法（缺失按「开」处理，保守提示）。
+    @MainActor static func checkActivatedAppMove() -> Bool {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("powerspaces-activated-app-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("preferences.json")
+        var failures = 0
+        func check(_ condition: Bool, _ label: String) {
+            if condition { print("  ok   \(label)") } else { print("  FAIL \(label)"); failures += 1 }
+        }
+        let prefs = Preferences(url: url)
+        check(prefs.moveActivatedAppToCurrentDesktop == false, "默认关闭")
+        prefs.moveActivatedAppToCurrentDesktop = true
+        let reloaded = Preferences(url: url)
+        check(reloaded.moveActivatedAppToCurrentDesktop, "开启后可持久化")
+        check(SpacesSwitchOnActivate.defaultsKey == "AppleSpacesSwitchOnActivate",
+              "读取的是系统设置里的同一个键")
+        // 系统开关：缺失时按开启处理（提示用户去关，而不是默默不提示）。
+        // 用独立 suite，避免本机全局域里已有的值干扰。
+        // 系统开关的纯判定：缺失按开启（提示用户去关），0 关闭，1 开启。
+        check(SpacesSwitchOnActivate.decide(stored: nil), "系统开关缺失时按开启处理")
+        check(SpacesSwitchOnActivate.decide(stored: 1), "系统开关为 1 时判定为开启")
+        check(!SpacesSwitchOnActivate.decide(stored: 0), "系统开关为 0 时判定为关闭")
+        // 与真实读取路径一致（本机该键存在，读到的是实际值）。
+        check(SpacesSwitchOnActivate.isOn == SpacesSwitchOnActivate.readsOn(in: .standard),
+              "属性与读取函数取同一结果")
+        print(failures == 0
+              ? "Activated-app move: verified"
+              : "Activated-app move: \(failures) failure(s)")
+        return failures == 0
+    }
+
     @MainActor static func checkAppearance() -> Bool {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("powerspaces-appearance-test-\(UUID().uuidString)")

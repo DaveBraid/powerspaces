@@ -23,6 +23,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var dockReservations = DockReservationStore(docks: { [weak self] in
         self?.docks.values.compactMap { $0.layoutReservation() } ?? []
     })
+    /// 激活应用时把它的窗口搬到当前桌面（需系统设置关闭「切换空间」）。
+    private lazy var activatedAppMover = ActivatedAppMover(
+        isEnabled: { Preferences.shared.moveActivatedAppToCurrentDesktop },
+        spaceRecentlyChanged: { [weak self] in
+            // 直接比较 Space ID：与上次判定时的 Space 不同，说明这次前台变化伴随切桌面。
+            guard let self, let current = try? self.provider.snapshot().activeSpaceID else { return true }
+            return current != self.lastCheckedSpaceID
+        })
+
+    /// 在已有轮询里检测前台变化：必要时把该应用的窗口搬到当前桌面。
+    ///
+    /// 不使用 `NSWorkspace.didActivateApplicationNotification`——本机（macOS 27）实测该通知
+    /// 与 space 变化通知都不送达，独立进程亦然。这里复用的是既有的有限轮询，
+    /// 不新增计时器；只在前台 pid 真正变化时才做后续判定。
+    private func detectForegroundChange() {
+        let front = NSWorkspace.shared.frontmostApplication
+        let change = ActivatedAppMover.ForegroundChange(
+            previousPID: lastForegroundPID,
+            currentPID: front?.processIdentifier,
+            ownPID: getpid())
+        lastForegroundPID = front?.processIdentifier
+        guard change.isNewActivation, let app = front else { return }
+        moveActivatedAppIfNeeded(
+            target: AppTarget(bundleID: app.bundleIdentifier, name: app.localizedName),
+            pid: app.processIdentifier)
+    }
+
+    /// 判定并（必要时）搬移；结果只记录，不打扰用户。
+    private func moveActivatedAppIfNeeded(target: AppTarget, pid: pid_t) {
+        guard Preferences.shared.moveActivatedAppToCurrentDesktop,
+              let snapshot = try? provider.snapshot() else { return }
+        // 确认读数取自真实 provider：搬移后必须复核窗口确实落到当前桌面。
+        // `spaces(forPID:)` 是 CGSSpaceProvider 的具体能力（协议上没有），
+        // 转换在应用层完成，SpaceKit 保持对协议的依赖。
+        guard let concrete = provider as? CGSSpaceProvider else { return }
+        let confirm: (pid_t) -> Set<SpaceID> = { concrete.spaces(forPID: $0) }
+        // 记下本次判定所在的 Space：下次前台变化若 Space 不同，就是切桌面而非激活。
+        lastCheckedSpaceID = snapshot.activeSpaceID
+        let outcome = activatedAppMover.consider(
+            .init(activeSpaceID: snapshot.activeSpaceID, target: target, pid: pid,
+                  confirmSpaces: confirm),
+            snapshot: snapshot)
+        switch outcome {
+        case .moved:
+            Log.debug("Activated-app move: \(target.bundleID ?? target.name ?? "?") → space \(snapshot.activeSpaceID)")
+        case .notMoved:
+            // 搬不动就什么都不做：不跳桌面、不关窗口、不重试。
+            Log.error("Activated-app move failed for \(target.bundleID ?? target.name ?? "?")")
+        case .disabled, .unavailable, .spaceChanged, .alreadyHere:
+            break
+        }
+    }
+    /// 上一次做激活判定时所在的 Space。前台变化若伴随 Space 变化（用户切桌面），一律不搬。
+    private var lastCheckedSpaceID: SpaceID?
+    /// 上一次轮询看到的前台 pid；用于在轮询里识别"前台换了应用"。
+    private var lastForegroundPID: pid_t?
+
     /// 提前接管窗口布局操作（Option＋绿色按钮、标题栏双击、Fn＋Control 快捷键、
     /// 窗口菜单布局项）。默认关闭；无法可靠识别时一律放行原操作。
     private lazy var layoutInterceptor = WindowLayoutInterceptor(reservations: dockReservations)
@@ -743,6 +800,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// One poll: refresh, then grow or reset the backoff based on whether anything
     /// changed, and arm the next tick.
     private func pollTick() {
+        detectForegroundChange()
         let changed = refresh()
         pollIdleTicks = changed ? 0 : pollIdleTicks + 1
         scheduleNextPoll()
@@ -861,6 +919,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @discardableResult
     private func refresh() -> Bool {
         guard let snapshot = try? provider.snapshot() else { return false }
+        // 记录 Space 是否刚变过：切桌面时前台应用也会变，自动搬移必须把那种情况排除。
         // Pids that own at least one window this tick — the shared basis for both
         // window-less treatments (reaping idle instances, and the window-less dock
         // items). Computed once here rather than in each helper.
