@@ -119,6 +119,8 @@ swift run spacekit-tests             # 运行现有测试入口，成功退出�
 swift run --build-system native PowerspacesApp --check-localization # 校验资源、参数与语言持久化，仅写临时目录
 swift run --build-system native PowerspacesApp --preview-settings   # 独立设置预览，不启动桌面管理或使用真实配置
 swift run --build-system native PowerspacesApp --preview-appearance # 设置与静态示例程序坞，使用临时配置
+swift run --build-system native PowerspacesApp --check-window-layout  # 窗口避让四方向自检，退出码 0/1
+swift run --build-system native PowerspacesApp --dump-window-layout   # 打印当前程序坞的避让几何（面板/玻璃/预留）
 ./scripts/make-app.sh                # 按需构建 release 并组装本地 Powerspaces.app
 ```
 
@@ -131,6 +133,7 @@ swift run --build-system native PowerspacesApp --preview-appearance # 设置与�
 - 不通过 sudo 运行整套构建，不提交 `.build/`、`.app`、`node_modules/` 等生成物。
 - macOS 27 的当前 Command Line Tools 缺少 `SwiftUIMacros` 插件；`ViewState` 显式引用原有 `SwiftUI.State<Value>` 属性包装器，避免选择同名宏。维护时不要无依据地改回 `@State`。
 - 涉及窗口行为时按改动范围验证：当前桌面有窗口、仅其他桌面有窗口、进程无窗口、最小化 / 隐藏、重复点击、切桌面竞态、多屏及权限缺失。报告实际验证项，区分自动测试和实机结果。
+- 改动窗口避让（预留几何、命中识别、菜单命令、外部改尺寸纠正）时必须运行 `--check-window-layout`：它用实机测得的四组面板/玻璃几何锁定四个停靠方向，且调用生产路径上的同一份纯函数（`DockGeometry` / `WindowLayoutCorrection`）。四个方向各有独立分支，只测默认方向会漏掉方向相关的缺陷。
 
 - 本机默认 swiftbuild 后端误将 SDK 标记为 14.0；应用构建和预览暂用 `--build-system native`。交付前用 `xcrun vtool -show-build` 确认真正的 SDK 版本，最低部署版本仍保留 14.0；不要用修改 Mach-O 的方式伪造 SDK。
 - macOS 27 程序坞透光调节隔离于 `GlassBackgroundTuning.swift`，使用经探测的私有玻璃滤镜参数；保留版本限制、原值恢复及失效回退，不修改系统全局设置或增加定时轮询。设置窗口不使用该调节。
