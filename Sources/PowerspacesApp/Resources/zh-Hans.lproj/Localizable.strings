@@ -620,3 +620,5 @@
 "Enable / Manage Permission…" = "启用／管理权限…";
 
 "Allow Powerspaces in System Settings → Privacy & Security → Accessibility to read Dock notification badges and manage windows. If Powerspaces is missing, add /Applications/Powerspaces.app with the + button. If it is already enabled but shows Not granted here, switch it off and on again; use Reset Permission if that does not help." = "请在“系统设置 → 隐私与安全性 → 辅助功能”中启用 Powerspaces，以读取程序坞通知徽章并管理窗口。若列表中没有 Powerspaces，点击 + 添加 /Applications/Powerspaces.app。若开关已开启，但这里仍显示“未授权”，请关闭再开启；仍无效时可使用“重置权限”。";
+
+"Accessibility lets Powerspaces read window titles, focus, move, minimize and close windows, and read notification badges from the macOS Dock to display them in the Powerspaces dock." = "辅助功能权限用于读取窗口标题、聚焦、移动、最小化和关闭窗口，以及读取 macOS 程序坞中的通知徽章，并在 PS 程序坞中显示。";

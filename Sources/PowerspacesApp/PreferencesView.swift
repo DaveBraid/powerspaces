@@ -1354,6 +1354,10 @@ private struct AccessibilityResetRow: View {
         .help(L10n.string(
             "Whether macOS currently lets Powerspaces control windows. Needed to close or minimize "
             + "windows and read window titles."))
+        Text(L10n.string("Accessibility lets Powerspaces read window titles, focus, move, minimize and close windows, and read notification badges from the macOS Dock to display them in the Powerspaces dock."))
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         HStack {
             Button(L10n.string("Enable / Manage Permission…")) { AccessibilityPermission.showAuthorizationGuide() }
                 .help(L10n.string("Open System Settings ▸ Privacy & Security ▸ Accessibility."))
