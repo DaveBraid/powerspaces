@@ -1673,6 +1673,17 @@ h.test("merged mode never splits icons, even with window labels on") {
          "split with both off stays merged per app")
 }
 
+h.test("window title labels only apply in split mode") {
+    h.ok(DockRefresher.labelsWindows(mode: .split, isLauncher: false, windowCount: 3),
+         "split labels a multi-window app")
+    h.ok(!DockRefresher.labelsWindows(mode: .split, isLauncher: false, windowCount: 1),
+         "split leaves a single-window app alone")
+    h.ok(!DockRefresher.labelsWindows(mode: .merged, isLauncher: false, windowCount: 3),
+         "merged never labels")
+    h.ok(!DockRefresher.labelsWindows(mode: .merged, isLauncher: true, windowCount: 2),
+         "the launcher is never labelled")
+}
+
 h.test("window count follows the current Space only") {
     // 合并模式的圆点数量取 windowCount（当前桌面的窗口数），
     // 因此另一个桌面有窗口时本桌面计数为 0。

@@ -25,6 +25,16 @@ public enum DockRefresher {
         return iconPerWindow || windowLabels
     }
 
+    /// 是否给某个条目套用窗口标题标签（宽条目）。
+    ///
+    /// 标签只在拆分模式有意义：合并模式下每个应用只有一个图标，标题会与图标
+    /// 一一对应的语义冲突（实测合并模式里仍会残留 `~/projects/` 这类标签）。
+    public static func labelsWindows(mode: DockWindowDisplayMode, isLauncher: Bool,
+                                     windowCount: Int) -> Bool {
+        guard mode == .split, !isLauncher else { return false }
+        return windowCount > 1
+    }
+
     public struct DisplayOptions {
         /// Expand each multi-window app into one entry per window (the "Windows"
         /// feature; also implied by window labels). Off → one icon per app.

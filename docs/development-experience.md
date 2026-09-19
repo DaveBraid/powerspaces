@@ -359,3 +359,9 @@
 实机对照（同一桌面，Safari 3 窗口 / Obsidian 2 窗口）：合并模式下 Safari 为 1 个图标 +
 3 个圆点、Obsidian 为 1 个图标；拆分模式下 Safari 3 个图标、Obsidian 2 个图标，各带 1 个圆点。
 
+**补充（同日）**：拆分模式的窗口标题标签需要按显示模式门控。首版只在标签应用处判断，
+遗漏了条目宽度计算那处，导致合并模式下仍会残留 `~/projects/` 这类宽条目。
+现统一走 `DockRefresher.labelsWindows(mode:isLauncher:windowCount:)` 纯函数并纳入单测。
+另外记录一条环境注意：`showWindowLabels` 的**默认值是 `true`**（拆分模式即「每窗口一个图标 +
+以窗口标题命名」）；用偏好文件做验证后要恢复默认，否则会误以为拆分模式丢了窗口名。
+

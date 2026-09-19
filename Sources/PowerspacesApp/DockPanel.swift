@@ -695,7 +695,10 @@ final class DockPanel: NSPanel {
             // labeled items with plain single-window icons. The launcher tile is
             // never labeled (it stands for no window) and never dimmed (it's not a
             // running/pinned app — it's always live).
-            let labeled = !app.isLauncher && prefs.showsWindowLabel(windowCount: app.windowCount)
+            // 合并模式下每个应用只有一个图标，窗口标题标签没有意义（拆分模式才用）。
+            let labeled = DockRefresher.labelsWindows(
+                mode: prefs.windowDisplayMode.spaceKitMode, isLauncher: app.isLauncher,
+                windowCount: prefs.showsWindowLabel(windowCount: app.windowCount) ? 2 : 1)
             let width = labeled ? labelWidth(for: app, side: side) : side
             let button = DockButton()
             button.cell = DockItemCell()
@@ -837,7 +840,9 @@ final class DockPanel: NSPanel {
         let side = CGFloat(prefs.iconSize)
         var result: [String: CGFloat] = [:]
         for (app, key) in zip(apps, slotKeys(of: apps)) {
-            let labeled = !app.isLauncher && prefs.showsWindowLabel(windowCount: app.windowCount)
+            let labeled = DockRefresher.labelsWindows(
+                mode: prefs.windowDisplayMode.spaceKitMode, isLauncher: app.isLauncher,
+                windowCount: prefs.showsWindowLabel(windowCount: app.windowCount) ? 2 : 1)
             result[key] = labeled ? labelWidth(for: app, side: side) : side
         }
         return result
