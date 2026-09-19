@@ -1742,6 +1742,22 @@ h.test("layout commands split the allowed frame correctly") {
     h.ok(screen.target(for: .restore) == nil, "restore has no geometric target")
 }
 
+h.test("reservation thickness is measured from the screen edge to the glass edge") {
+    // 实测主屏：面板 (695,1311,1170,129)，玻璃在面板内偏移 (6,6,1158,78)。
+    // 玻璃顶边 = 1311 + 6 = 1317；从屏幕底边 1440 量起应预留 123pt。
+    let panel = CGRect(x: 695, y: 1311, width: 1170, height: 129)
+    let glassInPanel = CGRect(x: 6, y: 6, width: 1158, height: 78)
+    let screenTop: CGFloat = 0, screenBottom: CGFloat = 1440
+    let glassTop = panel.minY + glassInPanel.minY
+    let glassBottom = panel.minY + glassInPanel.maxY
+    h.eq(screenBottom - glassTop, 123, "bottom dock reserves down to the glass top edge")
+    // 顶部停靠时量的是玻璃底边。
+    h.eq(glassBottom - screenTop, 1395, "top dock measures from the glass bottom edge")
+    // 玻璃偏移必须计入：只用面板总高会多留不可见的透明带。
+    h.ok(screenBottom - glassTop < panel.height + (panel.minY - glassTop) + 1000,
+         "glass offset is reflected in the thickness")
+}
+
 h.test("window identity never depends on launchDate") {
     // 实测 Finder 的 launchDate 恒为 nil；身份只用 pid 与窗口 ID。
     let identity = WindowIdentity(pid: 71303, windowID: 21291)

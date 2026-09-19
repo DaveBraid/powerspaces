@@ -1265,28 +1265,64 @@ final class DockPanel: NSPanel {
     private var magnificationReservedFrame: NSRect?
     var pointerInteractionFrame: NSRect { magnificationVisibleFrame ?? frame }
     private var magnificationRestFrame = NSRect.zero
-
-    /// 供窗口避让使用的静止预留：自屏幕物理边量起的占用厚度。
+    /// 供窗口避让使用的静止预留：自屏幕物理边起到**可见玻璃外沿**为止的厚度。
     ///
-    /// 取面板自身的布局尺寸（`panelSize()` 的横轴），而不是窗口 `frame` 或玻璃视图：
-    /// - `frame` 在定位/动画过程中读到的位置与窗口实际占位不一致（实测读回 y=0）；
-    /// - 玻璃视图比面板小（实测 78pt 对 129pt），按玻璃量会让窗口压在程序坞上。
-    /// 面板尺寸由偏好与图标尺寸决定，是稳定且可预期的占用范围。
+    /// 位置取自窗口服务器（`CGWindowListCopyWindowInfo`）：AppKit 的 window `frame`
+    /// 在定位后与真实占位不一致（实测读回 y=0 贴屏幕底，实际在屏幕底上方 129pt）。
+    /// 外沿取玻璃视图相对面板的偏移，而不是面板总高——面板比玻璃高出一段看不到东西的
+    /// 透明带（实测 129pt 对 78pt），按面板预留会让窗口与可见程序坞之间留出明显空隙。
     func layoutReservation() -> DockReservation? {
         guard let screen = boundScreen else { return nil }
         let edge = DockEdge(rawValue: Preferences.shared.barPosition.rawValue) ?? .bottom
         // 收起的 bar 不占常驻区域；放大进行中则视为已露出。
-        let tucked = hideState == .hidden && magnificationProgress == 0
-        guard !tucked else {
+        if hideState == .hidden && magnificationProgress == 0 {
             return DockReservation(displayID: screen.displayID, edge: edge, thickness: 0,
                                    isHiddenOrAutoHiding: true)
         }
+        guard let panel = serverBounds() else { return nil }
         layoutIfNeeded()
-        let size = panelSize()
-        let thickness = edge.isVertical ? size.width : size.height
+        let glassInPanel = effect.convert(effect.bounds, to: nil)
+        // 屏幕物理边在窗口服务器坐标（左上原点、y 向下）下的位置。
+        let primaryHeight = NSScreen.screens.first?.frame.maxY ?? screen.frame.maxY
+        let screenTop = primaryHeight - screen.frame.maxY
+        let screenBottom = primaryHeight - screen.frame.minY
+        // 玻璃在面板内的位置由 glassInPanel 给出（同为左上原点、y 向下），
+        // 因此各边外沿 = 面板对应边 + 玻璃在该侧的偏移。
+        let glassTop = panel.minY + glassInPanel.minY
+        let glassBottom = panel.minY + glassInPanel.maxY
+        let glassLeft = panel.minX + glassInPanel.minX
+        let glassRight = panel.minX + glassInPanel.maxX
+        let thickness: CGFloat
+        switch edge {
+        case .bottom: thickness = screenBottom - glassTop
+        case .top: thickness = glassBottom - screenTop
+        case .left: thickness = screen.frame.maxX - glassLeft
+        case .right: thickness = glassRight - screen.frame.minX
+        }
+        WindowLayoutDiagnostics.record(
+            "dockGeom display=\(screen.displayID) edge=\(edge.rawValue) panel=\(panel) glassInPanel=\(glassInPanel) thickness=\(thickness)")
         return DockReservation(displayID: screen.displayID, edge: edge,
                                thickness: max(0, thickness), isHiddenOrAutoHiding: false)
     }
+
+    /// 向窗口服务器查询本面板的真实屏幕边界（左上原点、y 向下）。
+    private func serverBounds() -> CGRect? {
+        guard let list = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] else {
+            return nil
+        }
+        let ownPID = getpid()
+        for entry in list
+        where (entry[kCGWindowOwnerPID as String] as? pid_t) == ownPID
+            && (entry[kCGWindowNumber as String] as? Int) == windowNumber {
+            if let dict = entry[kCGWindowBounds as String] as? [String: Any],
+               let rect = CGRect(dictionaryRepresentation: dict as CFDictionary) {
+                return rect
+            }
+        }
+        return nil
+    }
+
+
 
 
     private var magnificationRestCross: CGFloat = 0
