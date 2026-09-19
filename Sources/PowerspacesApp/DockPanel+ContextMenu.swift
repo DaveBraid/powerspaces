@@ -104,6 +104,9 @@ extension DockPanel: NSMenuDelegate {
             submenu.addItem(strategyItem(newWindowLabel, newWindowKind, app, current))
             submenu.addItem(.separator())
             submenu.addItem(strategyItem(L10n.string("Show a warning"), .warn, app, current))
+            // 仓库里「搬到本桌面」依赖未公开接口，菜单里同样标注实验性。
+            submenu.addItem(strategyItem(StrategyKind.moveHere.pickerLabel,
+                                         .moveHere, app, current))
             submenu.addItem(strategyItem(L10n.string("Quit there and reopen here"), .quitReopen, app, current))
             let parent = NSMenuItem(title: L10n.string("When open elsewhere"), action: nil, keyEquivalent: "")
             parent.submenu = submenu

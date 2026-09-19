@@ -955,7 +955,8 @@ struct PreferencesView: View {
                     get: { strategies.effectiveDefault() },
                     set: { strategies.setDefault($0) }
                 )) {
-                    ForEach(SingleInstance.defaultChoices, id: \.self) { Text($0.label).tag($0) }
+                    // 用 pickerLabel：`moveHere` 依赖未公开接口，在下拉里也要带实验性标记。
+                    ForEach(SingleInstance.defaultChoices, id: \.self) { Text($0.pickerLabel).tag($0) }
                 }
                 .help(L10n.string("How to make a new window for apps that don't have their own rule."))
             } header: {
