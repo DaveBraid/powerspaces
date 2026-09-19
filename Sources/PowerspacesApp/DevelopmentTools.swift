@@ -8,9 +8,34 @@ import SpaceKit
 enum DevelopmentTools {
     static let isAppearancePreview = CommandLine.arguments.contains("--preview-appearance")
     static let isGlassPreview = CommandLine.arguments.contains("--preview-glass")
-    static let isPreview = isGlassPreview || isAppearancePreview || CommandLine.arguments.contains("--preview-settings") || CommandLine.arguments.contains("--check-dock-layout")
+    static let isPreview = CommandLine.arguments.contains("--check-dock-performance") || isGlassPreview || isAppearancePreview || CommandLine.arguments.contains("--preview-settings") || CommandLine.arguments.contains("--check-dock-layout")
     static let previewDirectory = FileManager.default.temporaryDirectory
         .appendingPathComponent("powerspaces-preview-\(UUID().uuidString)")
+
+    /// 真实图标与混合标题的独立性能窗口，只使用临时配置。
+    @MainActor static func checkDockPerformance() {
+        _ = NSApplication.shared
+        guard let screen = NSScreen.main else { return }
+        defer { try? FileManager.default.removeItem(at: previewDirectory) }
+        let prefs = Preferences.shared
+        prefs.hoverEnabled = true
+        prefs.hoverScale = 1.5
+        prefs.hoverAnimation = 0
+        prefs.showWindowLabels = true
+        prefs.windowLabelScope = .multipleWindows
+        prefs.barPosition = .bottom
+        let dock = DockPanel(screen: screen)
+        let ids = ["com.apple.finder", "com.apple.Safari", "com.apple.Terminal", "com.apple.TextEdit"]
+        let apps = (0..<12).map { index in
+            DockApp(bundleID: ids[index % 4], name: "App \(index)", pid: 1,
+                    windowCount: index % 4 == 2 ? 2 : 1, isPinnedHere: index < 3)
+        }
+        dock.update(apps: apps, animateChanges: false)
+        dock.show()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        dock.measureMagnificationFrames()
+        dock.close()
+    }
 
     /// 验证菜单退出事件异步执行、重复事件合并；不退出实际运行的应用。
     @MainActor static func checkQuitAction() -> Bool {

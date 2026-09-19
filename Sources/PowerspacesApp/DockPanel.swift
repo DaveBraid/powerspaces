@@ -47,6 +47,10 @@ final class DockPanel: NSPanel {
     private let opticalInset: CGFloat = 6 // 给原生玻璃高光与阴影预留绘制空间。
     private let container = DockDropView()
     private let stack = NSStackView()
+    private var dockArrangedSubviews: [NSView] {
+        magnificationItems.isEmpty ? stack.arrangedSubviews : magnificationItems.map(\.view)
+    }
+
     private let effect = GlassSurfaceView(frame: .zero)
     /// 旧系统的染色与降低透明度覆盖层；Liquid Glass 使用原生 tintColor。
     private let tintOverlay = PassthroughView()
@@ -150,6 +154,8 @@ final class DockPanel: NSPanel {
         ) { [weak self] _ in
             // 延至当前窗口排序完成，处理鼠标静止时被覆盖；没有持续轮询。
             DispatchQueue.main.async { [weak self] in
+                // 确定性诊断自行提供屏幕输入，避免真实鼠标干扰；交互预览仍走真实通知。
+                guard !DevelopmentTools.isPreview || DevelopmentTools.isAppearancePreview else { return }
                 self?.endMagnificationIfPointerLeft(at: NSEvent.mouseLocation, deliveredElsewhere: true)
             }
         }
@@ -157,7 +163,7 @@ final class DockPanel: NSPanel {
                                                                object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                for case let button as DockButton in self.stack.arrangedSubviews {
+                for case let button as DockButton in self.dockArrangedSubviews {
                     button.setNotificationBadge(NotificationBadgeStore.shared.label(for: button.app?.bundleID))
                 }
             }
@@ -329,7 +335,8 @@ final class DockPanel: NSPanel {
     /// one. This is the smallest the bar can be without clipping its contents.
     /// 直接汇总项目约束尺寸，避免已绑定窗口的 stack.fittingSize 把放大宽度锁在旧窗口内。
     private func naturalStackSize() -> NSSize {
-        let views = stack.arrangedSubviews.filter { !$0.isHidden }
+        if let size = magnificationStackSize { return size } // 缩放几何已有精确边界，不能再触发 fittingSize 求解。
+        let views = dockArrangedSubviews.filter { !$0.isHidden }
         let vertical = Preferences.shared.barPosition.isVertical
         let sizes = views.map { view -> NSSize in
             if let button = view as? DockButton {
@@ -429,7 +436,7 @@ final class DockPanel: NSPanel {
         effectThickness?.constant = barThickness()
         let position = Preferences.shared.barPosition
         stackCrossCenter?.constant = (position == .bottom || position == .right) ? -inset : inset
-        for case let button as DockButton in stack.arrangedSubviews {
+        for case let button as DockButton in dockArrangedSubviews {
             let offset = position.isVertical ? max(0, (cross - button.restingWidth) / 2) : 0
             button.crossAxisCenteringOffset = position == .left ? -offset : offset
         }
@@ -490,7 +497,7 @@ final class DockPanel: NSPanel {
         guard prefs.desktopIndicatorEnabled else { return }
         desktopIndicator.translatesAutoresizingMaskIntoConstraints = false
         if prefs.desktopIndicatorPosition.isInsideDock {
-            let count = stack.arrangedSubviews.count
+            let count = dockArrangedSubviews.count
             let index: Int
             switch prefs.desktopIndicatorPosition {
             case .dockLeading: index = 0
@@ -540,7 +547,7 @@ final class DockPanel: NSPanel {
     /// doesn't look broken and the pin gesture is discoverable. Cleared on the next
     /// rebuild like any other item.
     private func addEmptyHintIfNeeded() {
-        guard stack.arrangedSubviews.isEmpty else { return }
+        guard dockArrangedSubviews.isEmpty else { return }
         let hint = NSTextField(labelWithString: L10n.string("Drag an app here to pin it"))
         hint.font = .systemFont(ofSize: NSFont.preferredFont(forTextStyle: .callout).pointSize)
         hint.textColor = .secondaryLabelColor
@@ -637,7 +644,7 @@ final class DockPanel: NSPanel {
         // labeled pill when its app gains a second window — can animate from its
         // old width instead of snapping to the new one.
         let oldWidths = Dictionary(
-            stack.arrangedSubviews.compactMap { view -> (String, CGFloat)? in
+            dockArrangedSubviews.compactMap { view -> (String, CGFloat)? in
                 guard let button = view as? DockButton, let key = button.slotKey,
                       let width = button.widthConstraint?.constant else { return nil }
                 return (key, width)
@@ -645,7 +652,7 @@ final class DockPanel: NSPanel {
         resetMagnification()
         self.apps = apps
         let keys = slotKeys(of: apps)
-        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        dockArrangedSubviews.forEach { $0.removeFromSuperview() }
         var entered: [DockButton] = []
         // Survivors whose width changes this rebuild (paired with the width they
         // start from), animated alongside an arrival so the bar grows smoothly.
@@ -774,7 +781,7 @@ final class DockPanel: NSPanel {
     /// closing animates just the icon that left instead of rebuilding silently.
     private func removedButtons(forNewApps newApps: [DockApp]) -> [DockButton] {
         let surviving = Set(slotKeys(of: newApps))
-        return stack.arrangedSubviews
+        return dockArrangedSubviews
             .compactMap { $0 as? DockButton }
             .filter { button in
                 guard let key = button.slotKey else { return false }
@@ -828,7 +835,7 @@ final class DockPanel: NSPanel {
         // snap when the follow-up rebuild swaps them out.
         let leaving = Set(buttons.map(ObjectIdentifier.init))
         let settledWidths = widthsBySlot(for: apps)
-        let survivorMorphs: [(button: DockButton, to: CGFloat)] = stack.arrangedSubviews.compactMap { view in
+        let survivorMorphs: [(button: DockButton, to: CGFloat)] = dockArrangedSubviews.compactMap { view in
             guard let button = view as? DockButton, !leaving.contains(ObjectIdentifier(button)),
                   let key = button.slotKey, let to = settledWidths[key],
                   let from = button.widthConstraint?.constant, abs(from - to) > 0.5 else { return nil }
@@ -838,7 +845,7 @@ final class DockPanel: NSPanel {
         // folds into the nearest surviving icon of the same app instead of sliding
         // off-screen. Map each such leaver to the offset toward that sibling, taken
         // now while every slot is still open and at its resting position.
-        let survivors = stack.arrangedSubviews.compactMap { $0 as? DockButton }
+        let survivors = dockArrangedSubviews.compactMap { $0 as? DockButton }
             .filter { !leaving.contains(ObjectIdentifier($0)) }
         let mergeOffsets: [ObjectIdentifier: CGVector] = Dictionary(
             uniqueKeysWithValues: buttons.compactMap { button -> (ObjectIdentifier, CGVector)? in
@@ -1040,9 +1047,9 @@ final class DockPanel: NSPanel {
     /// Slides the dragged icon to the slot the cursor is over, shifting the
     /// others aside. Driven live as the pointer moves.
     private func updateReorder(_ button: DockButton, at locationInWindow: NSPoint) {
-        guard let current = stack.arrangedSubviews.firstIndex(of: button) else { return }
+        guard let current = dockArrangedSubviews.firstIndex(of: button) else { return }
         let proposed = slotIndex(forCursorAt: locationInWindow, ignoring: button)
-        let group = stack.arrangedSubviews.enumerated().filter {
+        let group = dockArrangedSubviews.enumerated().filter {
             guard let app = ($0.element as? DockButton)?.app, let moving = button.app else { return false }
             return (app.isPinned || app.isLauncher) == (moving.isPinned || moving.isLauncher)
         }.map(\.offset)
@@ -1059,7 +1066,7 @@ final class DockPanel: NSPanel {
 
     private func endReorder(_ button: DockButton) {
         button.setLifted(false)
-        let reordered = stack.arrangedSubviews.compactMap { ($0 as? DockButton)?.app }
+        let reordered = dockArrangedSubviews.compactMap { ($0 as? DockButton)?.app }
         apps = reordered // keep our cache in step so the follow-up refresh is a no-op
         isReordering = false
         // With the "Windows" feature on, an app can occupy several adjacent
@@ -1100,7 +1107,7 @@ final class DockPanel: NSPanel {
         NSLayoutConstraint.activate([grow, cross])
         dragGap = gap
         dragGapSize = grow
-        stack.insertArrangedSubview(gap, at: min(index, stack.arrangedSubviews.count))
+        stack.insertArrangedSubview(gap, at: min(index, dockArrangedSubviews.count))
         layoutIfNeeded() // settle collapsed before animating it open
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = DockPanel.slotAnimation
@@ -1114,12 +1121,12 @@ final class DockPanel: NSPanel {
     /// Slides the open slot to a new index (no resize — the panel already has
     /// room for the slot; only the icons on either side shift).
     private func moveDragGap(to index: Int) {
-        guard let gap = dragGap, stack.arrangedSubviews.firstIndex(of: gap) != index else { return }
+        guard let gap = dragGap, dockArrangedSubviews.firstIndex(of: gap) != index else { return }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = DockPanel.slotAnimation
             ctx.allowsImplicitAnimation = true
             stack.removeArrangedSubview(gap)
-            stack.insertArrangedSubview(gap, at: min(index, stack.arrangedSubviews.count))
+            stack.insertArrangedSubview(gap, at: min(index, dockArrangedSubviews.count))
             layoutIfNeeded()
         }
     }
@@ -1170,7 +1177,7 @@ final class DockPanel: NSPanel {
         let vertical = Preferences.shared.barPosition.isVertical
         let cursor = stack.convert(locationInWindow, from: nil)
         var index = 0
-        for view in stack.arrangedSubviews where view !== excluded {
+        for view in dockArrangedSubviews where view !== excluded {
             let ahead = vertical ? (cursor.y < view.frame.midY) : (cursor.x > view.frame.midX)
             if ahead { index += 1 } else { break }
         }
@@ -1183,7 +1190,7 @@ final class DockPanel: NSPanel {
     /// user reposition an existing app by dragging its bundle back in.
     private func orderKeys(insertingBundleID bundleID: String) -> [String] {
         var keys: [String] = []
-        for view in stack.arrangedSubviews {
+        for view in dockArrangedSubviews {
             if view === dragGap {
                 keys.append(bundleID)
             } else if let app = (view as? DockButton)?.app, app.orderKey != bundleID {
@@ -1220,6 +1227,10 @@ final class DockPanel: NSPanel {
         let frame: NSRect
     }
     private var magnificationItems: [MagnificationItem] = []
+    private var magnificationStackSize: NSSize?
+    private var magnificationVisibleFrame: NSRect?
+    private var magnificationReservedFrame: NSRect?
+    var pointerInteractionFrame: NSRect { magnificationVisibleFrame ?? frame }
     private var magnificationRestFrame = NSRect.zero
     private var magnificationRestCross: CGFloat = 0
     private var magnificationProgress: CGFloat = 0
@@ -1230,6 +1241,7 @@ final class DockPanel: NSPanel {
     private var magnificationDuration: TimeInterval = 0
     nonisolated(unsafe) private var magnificationDisplayLink: CADisplayLink?
     private var pendingMagnificationPoint: NSPoint?
+    private var magnificationRenderProbe: ((Double, Double, Double) -> Void)?
     private var lastMagnificationGeometry: (focus: CGFloat, progress: CGFloat)?
     private lazy var magnificationFrameDriver = DockMagnificationFrameDriver { [weak self] in
         self?.tickMagnification()
@@ -1249,7 +1261,7 @@ final class DockPanel: NSPanel {
 
     /// 开发预览直接展示最终几何，不伪造鼠标事件。
     func previewMagnification(animated: Bool = false) {
-        let buttons = stack.arrangedSubviews.compactMap { $0 as? DockButton }
+        let buttons = dockArrangedSubviews.compactMap { $0 as? DockButton }
         guard !buttons.isEmpty else { return }
         let button = buttons[buttons.count / 2]
         magnify(atScreenPoint: convertPoint(toScreen: stack.convert(NSPoint(x: button.frame.midX, y: button.frame.midY), to: nil)))
@@ -1262,7 +1274,7 @@ final class DockPanel: NSPanel {
 
     /// 临时预览窗口中验证中途反向、拖拽和菜单复位；不写入用户设置或排序。
     func checkMagnificationInteractions() -> Bool {
-        guard let button = stack.arrangedSubviews.compactMap({ $0 as? DockButton }).first else { return false }
+        guard let button = dockArrangedSubviews.compactMap({ $0 as? DockButton }).first else { return false }
         previewMagnification(animated: true)
         RunLoop.main.run(until: Date().addingTimeInterval(0.025))
         let entered = magnificationProgress > 0 && magnificationProgress < 1
@@ -1291,7 +1303,7 @@ final class DockPanel: NSPanel {
 
     /// 独立实窗回归：伪退出、同一屏幕坐标、遮挡命中、隐藏复位及追踪区稳定性。
     func checkMagnificationPointerRouting() -> Bool {
-        guard let button = stack.arrangedSubviews.compactMap({ $0 as? DockButton }).first else { return false }
+        guard let button = dockArrangedSubviews.compactMap({ $0 as? DockButton }).first else { return false }
         previewMagnification()
         let rect = convertToScreen(button.convert(button.bounds, to: nil))
         let point = NSPoint(x: rect.midX, y: rect.midY)
@@ -1301,6 +1313,16 @@ final class DockPanel: NSPanel {
         let focus = magnificationFocus
         magnify(atScreenPoint: point)
         let stableFocus = magnificationFocus == focus && magnificationTarget == 1
+        let reserved = frame
+        magnify(atScreenPoint: NSPoint(x: point.x + 10, y: point.y + 10))
+        let fixedWindow = frame == reserved
+        let candidates = [NSPoint(x: frame.minX + 1, y: frame.midY), NSPoint(x: frame.maxX - 1, y: frame.midY),
+                          NSPoint(x: frame.midX, y: frame.minY + 1), NSPoint(x: frame.midX, y: frame.maxY - 1)]
+        let padding = candidates.first { !pointerInteractionFrame.contains($0) }
+        if let padding { updateMagnificationMouseAcceptance(at: padding) }
+        let passesThrough = padding != nil && ignoresMouseEvents
+        updateMagnificationMouseAcceptance(at: point)
+        let restoredHit = !ignoresMouseEvents
         container.updateTrackingAreas()
         button.updateTrackingAreas()
         let areas = container.trackingAreas + button.trackingAreas
@@ -1325,14 +1347,16 @@ final class DockPanel: NSPanel {
         tickMagnification()
         let hidden = magnificationItems.isEmpty && magnificationDisplayLink == nil
         hideState = .shown
-        print("Magnification pointer: inside=\(inside) stableFocus=\(stableFocus) tracking=\(stableTracking) covered=\(covered) coverHit=\(coverHit) hidden=\(hidden)")
-        return inside && stableFocus && stableTracking && covered && hidden
+        applyAutoHide() // 模拟隐藏状态测试结束，执行真实 reveal，恢复窗口位置和命中。
+        print("Magnification pointer: inside=\(inside) stableFocus=\(stableFocus) tracking=\(stableTracking) covered=\(covered) coverHit=\(coverHit) hidden=\(hidden) fixedWindow=\(fixedWindow) padding=\(passesThrough && restoredHit)")
+        return inside && stableFocus && stableTracking && covered && hidden && fixedWindow && passesThrough && restoredHit
     }
 
     /// 跨窗口鼠标事件补足 tracking area 丢失的退出；只收尾已有缩放，不触发进入。
     func endMagnificationIfPointerLeft(at screenPoint: NSPoint, deliveredElsewhere: Bool) {
         guard (!magnificationItems.isEmpty && magnificationTarget != 0) || pendingMagnificationPoint != nil else { return }
         guard !pointerHitsDock(at: screenPoint, checkOcclusion: deliveredElsewhere) else { return }
+        updateMagnificationMouseAcceptance(at: screenPoint)
         pendingMagnificationPoint = nil // 真正离开优先于尚未提交的进入事件。
         if magnificationItems.isEmpty { resetMagnification(); return }
         magnify(atScreenPoint: nil) // 保留余弦退出和菜单／拖拽保护，不用持续轮询。
@@ -1364,10 +1388,58 @@ final class DockPanel: NSPanel {
         return pass
     }
 
+    /// 独立显示刷新测量，真实绘制两秒；不把突发输入合并耗时当作帧率。
+    func measureMagnificationFrames() {
+        previewMagnification()
+        let resting = magnificationRestFrame
+        var costs: [Double] = []
+        var preparation: [Double] = [], windowUpdates: [Double] = [], layouts: [Double] = []
+        magnificationRenderProbe = { preparation.append($0); windowUpdates.append($1); layouts.append($2) }
+        defer { magnificationRenderProbe = nil }
+        var intervals: [Double] = []
+        let start = CACurrentMediaTime()
+        var previous = start
+        let driver = DockMagnificationFrameDriver { [weak self] in
+            guard let self else { return }
+            let now = CACurrentMediaTime()
+            intervals.append((now - previous) * 1000)
+            previous = now
+            let fraction = (sin((now - start) * 12) + 1) / 2
+            let point = NSPoint(x: resting.minX + 20 + (resting.width - 40) * fraction, y: resting.midY)
+            self.magnify(atScreenPoint: point)
+            costs.append((CACurrentMediaTime() - now) * 1000)
+        }
+        let link = container.displayLink(target: driver, selector: #selector(DockMagnificationFrameDriver.frame(_:)))
+        let rate = Float(boundScreen?.maximumFramesPerSecond ?? 60)
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: min(30, rate), maximum: rate, preferred: rate)
+        link.add(to: .main, forMode: .common)
+        RunLoop.main.run(until: Date().addingTimeInterval(2.5))
+        link.invalidate()
+        func p95(_ values: [Double]) -> Double {
+            let sorted = values.sorted()
+            return sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
+        }
+        print("Frame benchmark: callbacks=\(costs.count) displayMax=\(rate) intervalP95=\(p95(intervals))ms renderP95=\(p95(costs))ms")
+        print("Frame phases p95: prepare=\(p95(preparation))ms window=\(p95(windowUpdates))ms layout=\(p95(layouts))ms")
+        resetMagnification()
+    }
+
     /// 屏幕矩形只是初筛；可疑退出再查当前最上层可点击窗口，覆盖遮挡且不读 AX。
     private func pointerHitsDock(at point: NSPoint, checkOcclusion: Bool) -> Bool {
-        guard isVisible, !ignoresMouseEvents, alphaValue > 0, frame.contains(point) else { return false }
+        guard isVisible, !ignoresMouseEvents, alphaValue > 0,
+              (magnificationVisibleFrame ?? frame).contains(point) else { return false }
         return !checkOcclusion || NSWindow.windowNumber(at: point, belowWindowWithWindowNumber: 0) == windowNumber
+    }
+
+    /// 扩容窗口的透明预留区不截获点击；跨应用监听负责重新进入时恢复命中。
+    func updateMagnificationMouseAcceptance(at point: NSPoint) {
+        guard let visible = magnificationVisibleFrame, magnificationReservedFrame != nil,
+              hideState == .shown, !isContextMenuOpen, !isReordering, !isExternalDragging else { return }
+        let wasIgnoring = ignoresMouseEvents
+        ignoresMouseEvents = !visible.contains(point)
+        if wasIgnoring, !ignoresMouseEvents, pointerHitsDock(at: point, checkOcclusion: true) {
+            handleMagnificationPointer(point)
+        }
     }
 
     /// 实时输入与确定性预览分开；追踪区退出只是信号，不能直接把缩放目标置零。
@@ -1403,9 +1475,29 @@ final class DockPanel: NSPanel {
             layoutIfNeeded()
             magnificationRestFrame = frame
             magnificationRestCross = contentCross()
-            magnificationItems = stack.arrangedSubviews.filter { !$0.isHidden }.map {
+            magnificationItems = dockArrangedSubviews.filter { !$0.isHidden }.map {
                 MagnificationItem(view: $0, frame: convertToScreen($0.convert($0.bounds, to: nil)))
             }
+            // 只暂停排列约束，视图不离开父级；命中、辅助功能、菜单和拖拽仍使用原按钮。
+            NSLayoutConstraint.deactivate([stackAlongStart, stackAlongEnd, stackCrossCenter].compactMap { $0 })
+            for item in magnificationItems {
+                stack.removeArrangedSubview(item.view)
+                item.view.translatesAutoresizingMaskIntoConstraints = true
+                item.view.autoresizingMask = []
+                if let button = item.view as? DockButton {
+                    button.widthConstraint?.isActive = false
+                    button.heightConstraint?.isActive = false
+                }
+            }
+            stack.translatesAutoresizingMaskIntoConstraints = true
+            stack.autoresizingMask = [.width, .height]
+            stack.frame = effect.glassContent.bounds
+            let radius = 3 * CGFloat(prefs.iconSize)
+            let extra = CGFloat(prefs.iconSize * (prefs.hoverScale - 1))
+                / (2 * sin(.pi * CGFloat(prefs.iconSize) / (4 * radius)))
+            let vertical = prefs.barPosition.isVertical
+            magnificationReservedFrame = magnificationRestFrame.insetBy(dx: vertical ? 0 : -ceil(extra),
+                                                                         dy: vertical ? -ceil(extra) : 0)
         }
         guard !magnificationItems.isEmpty else { return }
         if let point {
@@ -1471,12 +1563,15 @@ final class DockPanel: NSPanel {
         if let last = lastMagnificationGeometry,
            last.focus == magnificationFocus, last.progress == magnificationProgress { return }
         lastMagnificationGeometry = (magnificationFocus, magnificationProgress)
+        let probeStart = magnificationRenderProbe == nil ? 0 : CACurrentMediaTime()
         let prefs = Preferences.shared
         let vertical = prefs.barPosition.isVertical
         let base = CGFloat(prefs.iconSize)
         let warp = DockMagnification(base: base, maximum: base * CGFloat(prefs.hoverScale),
                                      progress: magnificationProgress, focus: magnificationFocus)
         var intervals: [(CGFloat, CGFloat)] = []
+        var screenFrames: [NSRect] = []
+        var crossSize: CGFloat = 0
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         NSAnimationContext.runAnimationGroup { context in
@@ -1489,28 +1584,69 @@ final class DockPanel: NSPanel {
                     let center = (lower + upper) / 2
                     let scale = (warp.map(center + base / 2) - warp.map(center - base / 2)) / base
                     let along = warp.map(upper) - warp.map(lower)
-                    button.widthConstraint?.constant = vertical ? button.restingWidth * scale : along
-                    button.heightConstraint?.constant = vertical ? along : base * scale
+                    let width = vertical ? button.restingWidth * scale : along
+                    let height = vertical ? along : base * scale
+                    crossSize = max(crossSize, vertical ? width : height)
+                    if let constraint = button.widthConstraint, abs(constraint.constant - width) > 0.001 {
+                        constraint.constant = width
+                    }
+                    if let constraint = button.heightConstraint, abs(constraint.constant - height) > 0.001 {
+                        constraint.constant = height
+                    }
+                    var desired = item.frame
+                    desired.size = NSSize(width: width, height: height)
+                    if vertical { desired.origin.y = warp.map(lower) }
+                    else { desired.origin.x = warp.map(lower) }
+                    if prefs.barPosition == .top { desired.origin.y = item.frame.maxY - height }
+                    if prefs.barPosition == .right { desired.origin.x = item.frame.maxX - width }
+                    screenFrames.append(desired)
                     intervals.append((warp.map(lower), warp.map(upper)))
                 } else {
+                    crossSize = max(crossSize, vertical ? item.frame.width : item.frame.height)
                     let center = warp.map((lower + upper) / 2)
+                    var desired = item.frame
+                    if vertical { desired.origin.y = center - desired.height / 2 }
+                    else { desired.origin.x = center - desired.width / 2 }
+                    screenFrames.append(desired)
                     intervals.append((center - (upper - lower) / 2, center + (upper - lower) / 2))
                 }
             }
-            for index in 0..<max(0, magnificationItems.count - 1) {
-                let gap = vertical ? intervals[index].0 - intervals[index + 1].1
-                    : intervals[index + 1].0 - intervals[index].1
-                stack.setCustomSpacing(max(0, gap), after: magnificationItems[index].view)
-            }
+            let low = intervals.map(\.0).min() ?? 0
+            let high = intervals.map(\.1).max() ?? low
+            let insets = stack.edgeInsets
+            magnificationStackSize = vertical
+                ? NSSize(width: crossSize + insets.left + insets.right, height: high - low + insets.top + insets.bottom)
+                : NSSize(width: high - low + insets.left + insets.right, height: crossSize + insets.top + insets.bottom)
             let size = panelSize()
             var origin = placedOrigin(forSize: size, on: screen)
             let oldMin = magnificationItems.map { vertical ? $0.frame.minY : $0.frame.minX }.min() ?? 0
             let newMin = intervals.map(\.0).min() ?? oldMin
             if vertical { origin.y = magnificationRestFrame.minY + newMin - oldMin }
             else { origin.x = magnificationRestFrame.minX + newMin - oldMin }
-            let targetFrame = NSRect(origin: origin, size: size)
-            if frame != targetFrame { setFrame(targetFrame, display: false) } // 合成随显示刷新提交，不强制同步重绘。
-            layoutIfNeeded()
+            // 窗口服务会对齐物理像素；先统一量化，避免浮点尾差反复请求相同尺寸。
+            let pixels = backingScaleFactor
+            let targetFrame = NSRect(x: (origin.x * pixels).rounded() / pixels,
+                y: (origin.y * pixels).rounded() / pixels,
+                width: ceil(size.width * pixels) / pixels, height: ceil(size.height * pixels) / pixels)
+            let beforeWindow = magnificationRenderProbe == nil ? 0 : CACurrentMediaTime()
+            magnificationVisibleFrame = targetFrame
+            let windowFrame = magnificationReservedFrame ?? targetFrame
+            if frame != windowFrame { setFrame(windowFrame, display: false) } // 一次预留空间，动画不再逐帧调整系统窗口。
+            let alongDelta = vertical ? targetFrame.height - windowFrame.height : targetFrame.width - windowFrame.width
+            let centerDelta = vertical ? targetFrame.midY - windowFrame.midY : targetFrame.midX - windowFrame.midX
+            effectAlong?.constant = alongDelta - 2 * opticalInset
+            effectAlongCenter?.constant = centerDelta
+            let beforeLayout = magnificationRenderProbe == nil ? 0 : CACurrentMediaTime()
+            layoutIfNeeded() // 只更新玻璃与窗口；动画项目不再参与全栈约束求解。
+            for (item, desired) in zip(magnificationItems, screenFrames) {
+                let rect = stack.convert(convertFromScreen(desired), from: nil)
+                if item.view.frame != rect { item.view.frame = rect }
+            }
+            stack.layoutSubtreeIfNeeded() // 所有项目一次性提交，不能逐个触发层级布局。
+            if let probe = magnificationRenderProbe {
+                probe((beforeWindow - probeStart) * 1000, (beforeLayout - beforeWindow) * 1000,
+                      (CACurrentMediaTime() - beforeLayout) * 1000)
+            }
         }
         CATransaction.commit()
     }
@@ -1524,8 +1660,26 @@ final class DockPanel: NSPanel {
         magnificationProgress = 0
         magnificationTarget = 0
         applyMagnification()
-        for item in magnificationItems { stack.setCustomSpacing(NSStackView.useDefaultSpacing, after: item.view) }
+        let restingFrame = magnificationVisibleFrame ?? magnificationRestFrame
+        magnificationVisibleFrame = nil
+        magnificationReservedFrame = nil
+        effectAlong?.constant = -2 * opticalInset
+        effectAlongCenter?.constant = 0
+        setFrame(restingFrame, display: false)
+        if hideState == .shown, !fullyHidden { ignoresMouseEvents = false }
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.autoresizingMask = []
+        for item in magnificationItems {
+            item.view.translatesAutoresizingMaskIntoConstraints = false
+            stack.addArrangedSubview(item.view)
+            if let button = item.view as? DockButton {
+                button.widthConstraint?.isActive = true
+                button.heightConstraint?.isActive = true
+            }
+        }
+        NSLayoutConstraint.activate([stackAlongStart, stackAlongEnd, stackCrossCenter].compactMap { $0 })
         magnificationItems.removeAll()
+        magnificationStackSize = nil
         magnificationRestCross = 0
         lastMagnificationGeometry = nil
     }

@@ -15,6 +15,10 @@ if CommandLine.arguments.contains("--check-system-badges") || CommandLine.argume
 if CommandLine.arguments.contains("--check-native-dock") {
     exit(DevelopmentTools.checkNativeDockMaterial() ? 0 : 1)
 }
+if CommandLine.arguments.contains("--check-dock-performance") {
+    DevelopmentTools.checkDockPerformance()
+    exit(0)
+}
 if CommandLine.arguments.contains("--check-dock-layout") {
     exit(DevelopmentTools.checkDockLayout() ? 0 : 1)
 }

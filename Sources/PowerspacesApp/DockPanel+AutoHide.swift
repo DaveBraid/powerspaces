@@ -171,11 +171,13 @@ extension DockPanel {
         guard globalMouseMonitor == nil else { return }
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
+            self?.updateMagnificationMouseAcceptance(at: NSEvent.mouseLocation)
             self?.endMagnificationIfPointerLeft(at: NSEvent.mouseLocation, deliveredElsewhere: true)
             self?.handlePointerMoved()
         }
         localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
             if let self {
+                self.updateMagnificationMouseAcceptance(at: NSEvent.mouseLocation)
                 self.endMagnificationIfPointerLeft(at: NSEvent.mouseLocation,
                                                    deliveredElsewhere: event.window !== self)
                 self.handlePointerMoved()
@@ -229,7 +231,7 @@ extension DockPanel {
         guard let screen = boundScreen else { return false }
         let f = screen.frame
         // 正弦变形会非对称推开边界；显示期间必须使用真实窗口位置。
-        let shown = hideState == .shown ? frame : NSRect(origin: origin(forSize: frame.size, on: screen), size: frame.size)
+        let shown = hideState == .shown ? pointerInteractionFrame : NSRect(origin: origin(forSize: frame.size, on: screen), size: frame.size)
         var keep = shown.insetBy(dx: -2, dy: -2)
         // Stretch the bar's frame out to the screen edge it hugs, folding the
         // edge-gap into the keep region.
