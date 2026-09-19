@@ -425,3 +425,14 @@ public enum DockModel {
         }.map(\.element)
     }
 }
+
+/// 程序坞在屏幕上的长度约束。
+///
+/// 条目总长超出屏幕时**不做缩放**：窗口与玻璃钳制在屏内，图标行在玻璃内部横向滚动
+/// （与原生 Dock 溢出时的滚动一致，也避免图标小到点不准）。
+public enum DockLengthFit {
+
+    /// 程序坞沿屏幕边可占用的最大比例。留出余量让两端不贴边，也避免与
+    /// 换屏后的可用区钳制互相打架。
+    public static let maximumScreenFraction: CGFloat = 0.92
+}

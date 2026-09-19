@@ -1701,6 +1701,17 @@ h.test("window count follows the current Space only") {
          "the other Space sees its own window")
 }
 
+print("Dock length limit")
+h.test("the dock may use at most 92% of the screen edge") {
+    // 溢出处理是「钳制 + 内部滚动」，不再缩放图标；这里锁定上限比例本身。
+    h.ok(DockLengthFit.maximumScreenFraction > 0.5 && DockLengthFit.maximumScreenFraction < 1,
+         "the fraction leaves a margin at both ends")
+    let screen: CGFloat = 1470
+    let limit = screen * DockLengthFit.maximumScreenFraction
+    h.ok(limit < screen, "the clamped dock stays on screen")
+    h.ok(limit > screen * 0.8, "and still uses most of the available length")
+}
+
 print("Window layout geometry")
 h.test("dock reservation only subtracts space the system has not already reserved") {
     // 主屏实测：物理边界 2560x1440，系统可用区 y=30..1361（已扣菜单栏与 macOS 自己的
