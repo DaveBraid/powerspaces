@@ -804,6 +804,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func screensChanged() {
         pollIdleTicks = 0
         refresh()
+        // 显示器集合变化后重建窗口观测，保证外部改尺寸仍能被纠正。
+        layoutInterceptor.refreshObservation()
         // refresh() adds/removes docks but leaves survivors where they are, and a
         // pure geometry change doesn't alter their contents (so no rebuild → no
         // reposition). Re-place every surviving dock on its (possibly moved) screen
@@ -818,6 +820,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func refreshAction() {
+        // 前台应用可能已切换：为新前台应用的标准窗口装观测。
+        // 入口 4、5（第三方最大化、Option＋拖动）不经过事件 tap，
+        // 必须在用户操作之前就完成观测，否则要先触发一次入口 1～3 才生效。
+        layoutInterceptor.refreshObservation()
         // A workspace event (space switch / app launch-quit-activate) or a manual
         // refresh just updated us — drop back to the snappy base poll rate.
         pollIdleTicks = 0

@@ -64,6 +64,11 @@ public final class WindowLayoutInterceptor {
     /// 解析结果随事务传入动画队列，避免动画线程回头访问主线程。
     public var screensProvider: (@MainActor () -> [WindowLayoutScreen])?
 
+    /// 前台应用或屏幕配置变化后刷新窗口观测。调用方：应用激活通知、屏幕参数通知。
+    public func refreshObservation() {
+        observeFrontmostApplication()
+    }
+
     /// 当前布局屏列表；供诊断使用。
     @MainActor
     public var currentScreens: [WindowLayoutScreen] { screensProvider?() ?? [] }
@@ -71,10 +76,14 @@ public final class WindowLayoutInterceptor {
     private let reservations: DockReservationProviding
     private let queue = DispatchQueue(label: "com.powerspaces.window-layout")
 
-    /// 被接管过的窗口的几何观测，用于处理外部改尺寸（第三方最大化、Option＋拖动）。
-    /// 只观测我们动过的窗口，不干扰用户自由摆放的其它窗口。
+    /// 前台应用窗口的几何观测，用于处理不由事件 tap 触发的改尺寸
+    /// （第三方最大化、Option＋拖动）。观测覆盖前台应用的全部窗口，
+    /// 不要求先被接管过一次；纠正规则限定为「变大导致的越界」，
+    /// 因此手动移动或缩小窗口不受影响。
     private var observers: [pid_t: AXObserver] = [:]
     private var observedWindows: Set<WindowIdentity> = []
+    /// 每个被观测窗口上一次已知的几何，用于判断本次变化是「变大」还是移动/缩小。
+    private var observedFrames: [WindowIdentity: CGRect] = [:]
     private var snapWorkItems: [WindowIdentity: DispatchWorkItem] = [:]
     /// 指针是否处于按下状态。拖动/缩放过程中不纠正窗口，避免与用户抢几何；
     /// 松手后由左键抬起分支立即纠正一次。
@@ -122,6 +131,7 @@ public final class WindowLayoutInterceptor {
         tapSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: created, enable: true)
+        observeFrontmostApplication()
         return true
     }
 
@@ -133,6 +143,7 @@ public final class WindowLayoutInterceptor {
         }
         observers.removeAll()
         observedWindows.removeAll()
+        observedFrames.removeAll()
         for (_, item) in snapWorkItems { item.cancel() }
         snapWorkItems.removeAll()
         if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
@@ -539,9 +550,8 @@ extension WindowLayoutInterceptor {
         if let reservation = screen.reservation {
             log("RESERVE display=\(screen.displayID) edge=\(reservation.edge.rawValue) thickness=\(reservation.thickness) allowed=\(screen.allowedFrame)")
         }
-        // 开始观测该窗口：第三方最大化和 Option＋拖动都不经过事件 tap，
-        // 只能在几何变化后再把它推回可用区。
-        startObserving(identity: identity, window: window)
+        // 接管后顺带确保该窗口已被观测（前台应用切换时窗口集合会变）。
+        observe(identity: identity, window: window)
         let duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0.0 : 0.30
         let framesPerSecond = Double(screen.frame.isEmpty ? 60 : 60)
         log("INTERCEPT source=\(source.rawValue) command=\(command.rawValue) identity=\(identity.logDescription) generation=\(token) screen=\(screen.frame) original=\(original) target=\(target) restore=\(isRestore)")
@@ -763,29 +773,52 @@ public enum WindowLayoutScreens {
 
 extension WindowLayoutInterceptor {
 
-    /// 开始观测某个已接管窗口的几何变化。同一窗口只装一次。
-    func startObserving(identity: WindowIdentity, window: AXUIElement) {
+    /// 为前台应用的窗口装几何观测。应用切换、屏幕变化与接管成功后都要调用。
+    ///
+    /// 观测覆盖前台应用的全部标准窗口——入口 4、5（第三方最大化、Option＋拖动）
+    /// 不经过事件 tap，若只在接管后才观测，就必须先触发一次入口 1～3 才能生效。
+    func observeFrontmostApplication() {
+        guard let front = NSWorkspace.shared.frontmostApplication,
+              front.processIdentifier != getpid() else { return }
+        let pid = front.processIdentifier
+        let application = AXUIElementCreateApplication(pid)
+        guard let value = attribute(application, kAXWindowsAttribute),
+              let windows = value as? [AXUIElement] else { return }
+        for window in windows {
+            guard let identity = identity(of: window) else { continue }
+            observe(identity: identity, window: window)
+        }
+    }
+
+    /// 为单个窗口装观测；同一窗口只装一次。
+    private func observe(identity: WindowIdentity, window: AXUIElement) {
         stateLock.lock()
+        if let previous = frame(of: window) { observedFrames[identity] = previous }
         let already = observedWindows.contains(identity)
         if !already { observedWindows.insert(identity) }
         stateLock.unlock()
         guard !already else { return }
 
-        var observer: AXObserver?
-        let callback: AXObserverCallback = { _, _, _, refcon in
-            guard let refcon else { return }
-            let interceptor = Unmanaged<WindowLayoutInterceptor>.fromOpaque(refcon).takeUnretainedValue()
-            // 指针按下期间（拖动/缩放中）不纠正，交给松手后的检查；
-            // 外部工具改尺寸时指针未按下，则尽快纠正以缩短可见闪烁。
-            guard !interceptor.pointerIsDown else { return }
-            interceptor.scheduleSnapCheck(after: 0.04)
+        var observer = observers[identity.pid]
+        if observer == nil {
+            var created: AXObserver?
+            let callback: AXObserverCallback = { _, _, _, refcon in
+                guard let refcon else { return }
+                let interceptor = Unmanaged<WindowLayoutInterceptor>.fromOpaque(refcon).takeUnretainedValue()
+                // 指针按下期间（拖动/缩放中）不纠正，交给松手后的检查；
+                // 外部工具改尺寸时指针未按下，则尽快纠正以缩短可见闪烁。
+                guard !interceptor.pointerIsDown else { return }
+                interceptor.scheduleSnapCheck(after: 0.04)
+            }
+            guard AXObserverCreate(identity.pid, callback, &created) == .success, let created else { return }
+            CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(created), .commonModes)
+            observers[identity.pid] = created
+            observer = created
         }
-        guard AXObserverCreate(identity.pid, callback, &observer) == .success, let observer else { return }
+        guard let observer else { return }
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         AXObserverAddNotification(observer, window, kAXWindowMovedNotification as CFString, refcon)
         AXObserverAddNotification(observer, window, kAXWindowResizedNotification as CFString, refcon)
-        CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
-        observers[identity.pid] = observer
     }
 
     /// 合并短时间内的多次几何变化，稳定后再核对一次。
@@ -805,28 +838,29 @@ extension WindowLayoutInterceptor {
         }
     }
 
-    /// 若窗口压住程序坞，把它推回可用区。
+    /// 若窗口因**变大**而压住程序坞，把它收进可用区。
     ///
-    /// 只对已接管的窗口生效，且只在窗口确实与程序坞预留带重叠时移动，
-    /// 因此不会干扰用户刻意的自由摆放之外的窗口。
+    /// 只处理「高度增加且越界超过 4pt」的情况——第三方最大化与 Option＋拖动都会让
+    /// 窗口变高，而手动移动、缩小或刻意把窗口摆到程序坞上都不会被移动。
     func snapOffDock(identity: WindowIdentity) {
         guard !pointerIsDown else { return }   // 拖动中不打断
         stateLock.lock()
-        let snapshot = snapshots[identity]
+        guard let element = elementFor(identity) else { stateLock.unlock(); return }
+        let previous = observedFrames[identity]
         stateLock.unlock()
-        guard let snapshot else { return }
-        let window = snapshot.element
+        let window = element
         guard let current = frame(of: window) else { return }
+        stateLock.lock()
+        observedFrames[identity] = current
+        stateLock.unlock()
+        // 只有变大才纠正。
+        if let previous, current.height <= previous.height + 1 { return }
         let availableScreens = MainActor.assumeIsolated { screensProvider?() ?? [] }
         guard let screen = screen(containing: current, in: availableScreens) else { return }
         let allowed = screen.allowedFrame
-        guard allowed.height > 0 else { return }
-        guard current.maxY > allowed.maxY + 1 else { return }   // 未越界
-        guard !generationInFlight(identity) else { return }   // 正在动画中不打断
-        // 保持顶边与左右位置：把窗口收进可用区。高度也要收——第三方最大化会把
-        // 窗口设成整屏高，只上移会把它顶到屏幕外。
+        guard current.maxY > allowed.maxY + 4 else { return }   // 未明显越界
+        guard !generationInFlight(identity) else { return }     // 正在动画中不打断
         var target = current
-        target.origin.y = current.minY
         target.size.height = min(current.height, allowed.maxY - current.minY)
         target.origin.y = allowed.maxY - target.height
         guard target.minY >= allowed.minY - 1, target.height > 160 else { return }
@@ -834,8 +868,19 @@ extension WindowLayoutInterceptor {
         let actual = frame(of: window) ?? current
         log("SNAP_OFF_DOCK identity=\(identity.logDescription) from=\(current) target=\(target) actual=\(actual) wrote=\(wrote)")
         stateLock.lock()
-        if snapshots[identity] != nil { snapshots[identity]!.lastWritten = actual }
+        snapshots[identity]?.lastWritten = actual
+        observedFrames[identity] = actual
         stateLock.unlock()
+    }
+
+    /// 取某个身份对应的窗口元素：优先已接管窗口的快照，其次按窗口列表匹配。
+    private func elementFor(_ identity: WindowIdentity) -> AXUIElement? {
+        if let snapshot = snapshots[identity] { return snapshot.element }
+        let application = AXUIElementCreateApplication(identity.pid)
+        guard let value = attribute(application, kAXWindowsAttribute),
+              let windows = value as? [AXUIElement] else { return nil }
+        for window in windows where self.identity(of: window) == identity { return window }
+        return nil
     }
 
     /// 该窗口是否有进行中的动画事务。
