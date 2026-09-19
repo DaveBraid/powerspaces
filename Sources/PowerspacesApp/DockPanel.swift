@@ -1282,35 +1282,24 @@ final class DockPanel: NSPanel {
         guard let panel = serverBounds() else { return nil }
         layoutIfNeeded()
         let glassInPanel = effect.convert(effect.bounds, to: nil)
-        // 屏幕物理边在窗口服务器坐标（左上原点、y 向下）下的位置。
+        // 预留换算交给 DockGeometry.reserveThickness（纯函数，便于四方向自检）。
+        // 要点：面板位置取自窗口服务器；玻璃贴面板外侧，多出的留白在内侧，
+        // 因此内沿是「面板外沿 + 内侧留白」，不是面板外沿本身。
         let primaryHeight = NSScreen.screens.first?.frame.maxY ?? screen.frame.maxY
-        let screenTop = primaryHeight - screen.frame.maxY
-        let screenBottom = primaryHeight - screen.frame.minY
-        // 玻璃视图在面板内**贴外侧**：面板比玻璃高，多出的留白在内侧。
-        // 因此可见玻璃的范围要从面板外沿往内量：外侧偏移 = 面板尺寸 − 玻璃尺寸 − 内侧偏移。
-        // 实测底部停靠：panel 129pt、玻璃 78pt、外侧偏移 6pt → 可见玻璃内沿 = 827 + 45 = 872，
-        // 与截图像素观测一致；若直接用面板外沿（827）会多留约 39pt 空隙。
-        let inset = { (panelLength: CGFloat, glassLength: CGFloat, offset: CGFloat) -> CGFloat in
-            max(0, panelLength - glassLength - offset)
-        }
-        let glassTop = panel.minY + inset(panel.height, glassInPanel.height, glassInPanel.minY)
-        let glassBottom = panel.maxY - inset(panel.height, glassInPanel.height, glassInPanel.minY)
-        let glassLeft = panel.minX + inset(panel.width, glassInPanel.width, glassInPanel.minX)
-        let glassRight = panel.maxX - inset(panel.width, glassInPanel.width, glassInPanel.minX)
-        let thickness: CGFloat
-        switch edge {
-        case .bottom: thickness = screenBottom - glassTop
-        case .top: thickness = glassBottom - screenTop
-        // 左右两侧：预留 = 从本侧屏幕边量到玻璃内沿的距离。
-        // 玻璃贴屏幕外沿，所以左侧量到玻璃右边（glassRight），右侧量到玻璃左边（glassLeft）。
-        case .left: thickness = glassRight - screen.frame.minX
-        case .right: thickness = screen.frame.maxX - glassLeft
-        }
-        WindowLayoutDiagnostics.record(
-            "dockGeom display=\(screen.displayID) edge=\(edge.rawValue) panel=\(panel) glassInPanel=\(glassInPanel) thickness=\(thickness)")
+        let thickness = DockGeometry.reserveThickness(
+            panel: panel, glassInPanel: glassInPanel, screenFrame: screen.frame,
+            primaryHeight: primaryHeight, edge: edge)
+
         return DockReservation(displayID: screen.displayID, edge: edge,
                                thickness: max(0, thickness), isHiddenOrAutoHiding: false)
     }
+
+    /// 诊断用：面板在窗口服务器中的真实边界。
+    func debugServerBounds() -> CGRect? { serverBounds() }
+    /// 诊断用：玻璃视图相对面板的 frame。
+    func debugGlassFrame() -> NSRect { effect.convert(effect.bounds, to: nil) }
+    /// 诊断用：可见玻璃厚度。
+    func debugBarThickness() -> CGFloat { barThickness() }
 
     /// 向窗口服务器查询本面板的真实屏幕边界（左上原点、y 向下）。
     private func serverBounds() -> CGRect? {

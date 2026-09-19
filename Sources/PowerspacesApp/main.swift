@@ -57,6 +57,13 @@ if CommandLine.arguments.contains("--check-dock-layout") {
 if CommandLine.arguments.contains("--check-quit") {
     exit(DevelopmentTools.checkQuitAction() ? 0 : 1)
 }
+if CommandLine.arguments.contains("--dump-window-layout") {
+    DevelopmentTools.dumpWindowLayoutGeometry()
+    exit(0)
+}
+if CommandLine.arguments.contains("--check-window-layout") {
+    exit(DevelopmentTools.checkWindowLayout() ? 0 : 1)
+}
 if CommandLine.arguments.contains("--check-appearance") {
     exit(DevelopmentTools.checkAppearance() ? 0 : 1)
 }

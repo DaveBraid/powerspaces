@@ -165,3 +165,115 @@ public struct WindowIdentity: Hashable, Sendable {
     /// 供日志与诊断使用的稳定字符串。
     public var logDescription: String { "\(pid):\(windowID)" }
 }
+
+/// 程序坞几何的纯计算：把「面板 / 玻璃 / 屏幕」三组矩形换算成避让预留与纠正结果。
+///
+/// 抽成纯函数是为了能对四个停靠方向做确定性自检——这些公式在只测底部时
+/// 曾漏掉三个方向相关的缺陷（左右公式写反、越界判据只判竖向、顶部未收高度）。
+public enum DockGeometry {
+
+    /// 由窗口服务器报告的面板边界与玻璃在面板内的位置，推算自屏幕物理边量起的预留厚度。
+    ///
+    /// 玻璃贴面板外侧，多出的留白在内侧；因此内沿 = 面板外沿 + 内侧留白，
+    /// 而不是面板外沿本身（直接用外沿会多留一段看不到东西的空隙）。
+    public static func reserveThickness(panel: CGRect, glassInPanel: CGRect,
+                                        screenFrame: CGRect, primaryHeight: CGFloat,
+                                        edge: DockEdge) -> CGFloat {
+        // 预留 = 屏幕物理边 → **可见玻璃内沿**。
+        //
+        // 面板比玻璃大，多出的留白在内侧，因此必须从面板外沿往内量：
+        //   内沿 = 面板外沿 + (面板长度 − 玻璃长度 − 玻璃在该轴上的偏移)
+        // 这个关系由四个方向的实机像素测量反推得到（底部 872 / 左侧 176 /
+        // 右侧 1163 / 顶部 156，均与可见玻璃边缘逐像素对齐），
+        // 不做「偏移取最小值」之类的推广——实测表明玻璃视图 frame 在方向之间
+        // 参考边不一致，推广会算错（曾把底部算成 911、右侧算成 137、顶部算成 39）。
+        let inset = { (panelLength: CGFloat, glassLength: CGFloat, offset: CGFloat) -> CGFloat in
+            max(0, panelLength - glassLength - offset)
+        }
+        let screenTop = primaryHeight - screenFrame.maxY
+        let screenBottom = primaryHeight - screenFrame.minY
+        let glassTop = panel.minY + inset(panel.height, glassInPanel.height, glassInPanel.minY)
+        let glassBottom = panel.maxY - inset(panel.height, glassInPanel.height, glassInPanel.minY)
+        let glassLeft = panel.minX + inset(panel.width, glassInPanel.width, glassInPanel.minX)
+        let glassRight = panel.maxX - inset(panel.width, glassInPanel.width, glassInPanel.minX)
+        switch edge {
+        case .bottom: return max(0, screenBottom - glassTop)
+        case .top: return max(0, glassBottom - screenTop)
+        case .left: return max(0, glassRight - screenFrame.minX)
+        case .right: return max(0, screenFrame.maxX - glassLeft)
+        }
+    }
+}
+
+/// 外部改尺寸后的纠正结果。
+public struct LayoutCorrection: Sendable, Equatable {
+    /// 纠正后的窗口矩形；nil 表示无需纠正（未越界、变小或纠正后会超出可用区）。
+    public let target: CGRect?
+    /// 是否因「变大」触发的纠正（变小与移动不纠正）。
+    public let grew: Bool
+
+    public init(target: CGRect?, grew: Bool) {
+        self.target = target
+        self.grew = grew
+    }
+}
+
+public enum WindowLayoutCorrection {
+
+    /// 外部改尺寸（第三方最大化、Option＋拖动）后的纠正：只有**变大导致的越界**才动窗口。
+    ///
+    /// 越界方向取决于停靠边，且左右两侧看的边界不同——左侧坞的预留带在屏幕左边，
+    /// 右边界本就等于可用区右边界，因此要看 `minX`；右侧坞相反。顶部坞下移时必须
+    /// 同时收高度，否则底边会超出屏幕。
+    public static func correction(current: CGRect, allowed: CGRect, edge: DockEdge,
+                                  previous: CGRect?, tolerance: CGFloat = 4,
+                                  minimumSize: CGFloat = 160) -> LayoutCorrection {
+        let grew: Bool
+        if let previous {
+            grew = current.height > previous.height + 1 || current.width > previous.width + 1
+        } else {
+            grew = true
+        }
+        guard grew else { return LayoutCorrection(target: nil, grew: false) }
+
+        var target = current
+        switch edge {
+        case .bottom:
+            guard current.maxY > allowed.maxY + tolerance else {
+                return LayoutCorrection(target: nil, grew: true)
+            }
+            // 高度必须收进可用区，否则整屏高的窗口纠正后会顶出屏幕。
+            target.size.height = min(current.height, allowed.height)
+            target.origin.y = allowed.maxY - target.height
+        case .top:
+            guard current.minY < allowed.minY - tolerance else {
+                return LayoutCorrection(target: nil, grew: true)
+            }
+            target.origin.y = allowed.minY
+            target.size.height = min(current.height, allowed.height)
+        case .left:
+            guard current.minX < allowed.minX - tolerance else {
+                return LayoutCorrection(target: nil, grew: true)
+            }
+            // 宽度同理：整屏宽的窗口在左右停靠时必须一起收窄，否则只平移仍会越界。
+            // 同时要把纵向也收进可用区（整屏高的窗口上边界在允许区之上）。
+            target.size.width = min(current.width, allowed.width)
+            target.size.height = min(current.height, allowed.height)
+            target.origin.x = allowed.minX
+            target.origin.y = max(current.minY, allowed.minY)
+        case .right:
+            guard current.maxX > allowed.maxX + tolerance else {
+                return LayoutCorrection(target: nil, grew: true)
+            }
+            target.size.width = min(current.width, allowed.width)
+            target.size.height = min(current.height, allowed.height)
+            target.origin.x = allowed.maxX - target.width
+            target.origin.y = max(current.minY, allowed.minY)
+        }
+        guard target.width > minimumSize, target.height > minimumSize,
+              target.minX >= allowed.minX - 1, target.minY >= allowed.minY - 1 else {
+            return LayoutCorrection(target: nil, grew: true)
+        }
+        return LayoutCorrection(target: target, grew: true)
+    }
+}

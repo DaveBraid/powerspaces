@@ -393,6 +393,175 @@ enum DevelopmentTools {
     }
 
     /// 验证外观配置的边界、持久化与旧材质迁移；只使用临时文件。
+    /// 打印当前程序坞的避让几何，用于核对预留与四方向行为。
+    ///
+    /// 输出面板（窗口服务器）、玻璃（视图坐标转换）、屏幕与推导出的预留，
+    /// 便于在任意停靠方向下确认「预留 = 屏幕边 → 可见玻璃内沿」。
+    @MainActor static func dumpWindowLayoutGeometry() {
+        _ = NSApplication.shared
+        guard let screen = NSScreen.main else { print("no screen"); return }
+        let primaryHeight = NSScreen.screens.first?.frame.maxY ?? screen.frame.maxY
+        let panel = DockPanel(screen: screen)
+        panel.layoutIfNeeded()
+        print("screen      frame=\(screen.frame) visible=\(screen.visibleFrame)")
+        print("barPosition \(Preferences.shared.barPosition.rawValue)")
+        if let panelRect = panel.debugServerBounds() {
+            print("panel       \(panelRect)  (window server, top-left origin)")
+        } else {
+            print("panel       <unavailable: panel not on screen>")
+        }
+        print("glassInPanel \(panel.debugGlassFrame())")
+        print("barThickness \(panel.debugBarThickness())")
+        if let reservation = panel.layoutReservation() {
+            print("reservation edge=\(reservation.edge.rawValue) thickness=\(Int(reservation.thickness))")
+        } else {
+            print("reservation <nil>")
+        }
+        _ = primaryHeight
+    }
+
+    /// 窗口避让的四方向自检。
+    ///
+    /// 覆盖两类只在非底部方向暴露过的缺陷：预留换算（左右公式曾写反）与外部改尺寸的
+    /// 越界判据（曾只判竖向、顶部未收高度）。断言调用产品代码中同一份纯函数
+    /// （`DockGeometry.reserveThickness` / `WindowLayoutCorrection`），
+    /// 面板那一层只断言其对外契约（未上屏时不预留），避免自检依赖可见窗口。
+    @MainActor static func checkWindowLayout() -> Bool {
+        _ = NSApplication.shared
+        guard let screen = NSScreen.main else {
+            print("Window layout: no screen available")
+            return false
+        }
+        let prefs = Preferences.shared
+        let saved = (prefs.barPosition, prefs.hoverEnabled, prefs.dockHeight)
+        defer {
+            prefs.barPosition = saved.0
+            prefs.hoverEnabled = saved.1
+            prefs.dockHeight = saved.2
+        }
+        prefs.hoverEnabled = false
+        prefs.dockHeight = 64
+
+        var failures = 0
+        func check(_ condition: Bool, _ message: String) {
+            if condition {
+                print("  ✓ \(message)")
+            } else {
+                print("  ✗ \(message)")
+                failures += 1
+            }
+        }
+        func near(_ a: CGFloat, _ b: CGFloat) -> Bool { abs(a - b) <= 1 }
+
+        let primaryHeight = NSScreen.screens.first?.frame.maxY ?? screen.frame.maxY
+        let screenFrame = CGRect(x: screen.frame.minX,
+                                 y: primaryHeight - screen.frame.maxY,
+                                 width: screen.frame.width, height: screen.frame.height)
+        let visibleFrame = CGRect(x: screen.visibleFrame.minX,
+                                  y: primaryHeight - screen.visibleFrame.maxY,
+                                  width: screen.visibleFrame.width,
+                                  height: screen.visibleFrame.height)
+        // 面板比玻璃大（多出的留白在内侧），玻璃贴面板外侧——这是换算的关键前提。
+        let panelLength: CGFloat = 400
+        let glassThickness: CGFloat = 78
+        let glassOffset: CGFloat = 6
+        let innerGap = panelLength - glassThickness - glassOffset
+
+        for position in [BarPosition.bottom, .top, .left, .right] {
+            prefs.barPosition = position
+            let edge = DockEdge(rawValue: position.rawValue)!
+            // 说明：这里不构造 DockPanel 断言其运行时预留——未上屏的面板在窗口服务器里
+            // 没有稳定位置（实测同一构造在底/左报 84pt、顶 316pt、右 nil），
+            // 断言它只会产生噪声。面板层的正确性由上面四组实机几何基准覆盖。
+
+            // 预留换算：用实机测得的四组面板/玻璃几何做回归基准
+            // （内建屏 1470×956，panel 与 glassInPanel 取自运行中的程序坞面板）。
+            // 期望值是同一屏幕下已逐像素验证过的窗口边缘：底 872 / 左 176 / 右 1163 / 顶 156。
+            // 这锁定「预留 = 屏幕物理边 → 可见玻璃内沿」，可捕获左右量错边、
+            // 或按面板尺寸/外沿计算导致的偏移。
+            let panel: CGRect
+            let glass: CGRect
+            let measuredEdge: CGFloat
+            switch edge {
+            case .bottom:
+                panel = CGRect(x: 6, y: 827, width: 1458, height: 129)
+                glass = CGRect(x: 6, y: 6, width: 1446, height: 78)
+                measuredEdge = 872
+            case .top:
+                panel = CGRect(x: 6, y: 33, width: 1458, height: 129)
+                glass = CGRect(x: 6, y: 45, width: 1446, height: 78)
+                measuredEdge = 156
+            case .left:
+                panel = CGRect(x: 0, y: 38, width: 313, height: 914)
+                glass = CGRect(x: 6, y: 6, width: 170, height: 902)
+                measuredEdge = 176
+            case .right:
+                panel = CGRect(x: 1157, y: 38, width: 313, height: 914)
+                glass = CGRect(x: 137, y: 6, width: 170, height: 902)
+                measuredEdge = 1163
+            }
+            let reserve = DockGeometry.reserveThickness(
+                panel: panel, glassInPanel: glass, screenFrame: screenFrame,
+                primaryHeight: primaryHeight, edge: edge)
+            let expected: CGFloat
+            switch edge {
+            case .bottom: expected = screenFrame.maxY - measuredEdge
+            case .top: expected = measuredEdge - screenFrame.minY
+            case .left: expected = measuredEdge - screenFrame.minX
+            case .right: expected = screenFrame.maxX - measuredEdge
+            }
+            check(near(reserve, expected),
+                  "\(position.rawValue): reserve \(Int(reserve))pt matches the verified \(Int(expected))pt")
+            check(reserve < (edge.isVertical ? screenFrame.width : screenFrame.height) / 2,
+                  "\(position.rawValue): reserve is a band, not half the screen")
+
+            let reservation = DockReservation(displayID: 0, edge: edge, thickness: reserve)
+            let layoutScreen = WindowLayoutScreen(frame: screenFrame, visibleFrame: visibleFrame,
+                                                  displayID: 0, reservation: reservation)
+            let allowed = layoutScreen.allowedFrame
+            check(allowed.width > 160 && allowed.height > 160,
+                  "\(position.rawValue): allowed frame stays usable")
+            check(screenFrame.insetBy(dx: -1, dy: -1).contains(allowed),
+                  "\(position.rawValue): allowed frame stays inside the screen")
+
+            // 外部最大化：整屏窗口必须被纠正回可用区，且不越出屏幕。
+            let outcome = WindowLayoutCorrection.correction(
+                current: screenFrame, allowed: allowed, edge: edge, previous: nil)
+            guard let corrected = outcome.target else {
+                check(false, "\(position.rawValue): a full-screen window is corrected "
+                      + "(current=\(screenFrame) allowed=\(allowed) grew=\(outcome.grew))")
+                continue
+            }
+            check(screenFrame.insetBy(dx: -1, dy: -1).contains(corrected),
+                  "\(position.rawValue): corrected window stays on screen")
+            switch edge {
+            case .bottom:
+                check(near(corrected.maxY, allowed.maxY), "\(position.rawValue): bottom edge meets the allowed area")
+            case .top:
+                check(near(corrected.minY, allowed.minY), "\(position.rawValue): top edge meets the allowed area")
+            case .left:
+                check(near(corrected.minX, allowed.minX), "\(position.rawValue): left edge meets the allowed area")
+            case .right:
+                check(near(corrected.maxX, allowed.maxX), "\(position.rawValue): right edge meets the allowed area")
+            }
+
+            // 变小与移动不纠正。
+            let small = allowed.insetBy(dx: allowed.width / 4, dy: allowed.height / 4)
+            check(WindowLayoutCorrection.correction(
+                    current: small, allowed: allowed, edge: edge,
+                    previous: small.insetBy(dx: -40, dy: -40)).target == nil,
+                  "\(position.rawValue): shrinking is left alone")
+            check(WindowLayoutCorrection.correction(
+                    current: small, allowed: allowed, edge: edge, previous: small).target == nil,
+                  "\(position.rawValue): moving is left alone")
+        }
+
+        print(failures == 0
+              ? "Window layout: 4 dock edges verified"
+              : "Window layout: \(failures) check(s) failed")
+        return failures == 0
+    }
+
     @MainActor static func checkAppearance() -> Bool {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("powerspaces-appearance-test-\(UUID().uuidString)")
