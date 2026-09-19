@@ -187,6 +187,7 @@ final class Preferences: ObservableObject {
         static let launchAtLogin = "launchAtLogin"
         static let hideAppleDock = "hideAppleDock"
         static let windowLayoutInterception = "windowLayoutInterception"
+        static let windowDisplayMode = "windowDisplayMode"
         static let fasterDesktopSwitch = "fasterDesktopSwitch"
         static let fasterKeyboardSwitch = "fasterKeyboardSwitch"
         // Internal bookkeeping (not user-facing): set while we've disabled the
@@ -292,6 +293,8 @@ final class Preferences: ObservableObject {
             K.hideAppleDock: true,
             // 默认关闭：这是全局输入接管，用户明确开启后才生效。
             K.windowLayoutInterception: false,
+            // 保持既有行为：默认每个窗口一个图标。
+            K.windowDisplayMode: WindowDisplayMode.split.rawValue,
             K.fasterDesktopSwitch: false,
             K.fasterKeyboardSwitch: false,
             K.appLauncherEnabled: true,
@@ -497,6 +500,12 @@ final class Preferences: ObservableObject {
     /// 菜单里的布局项都会直接动画到「避开程序坞」的目标尺寸，而不是让系统先最大化。
     /// 默认关闭——它会拦截全局输入，无法可靠识别时一律放行原操作。
     var windowLayoutInterception: Bool { get { bln(K.windowLayoutInterception) } set { setBln(newValue, K.windowLayoutInterception) } }
+    /// 多窗口应用在程序坞里的呈现方式：拆分（每窗口一图标）或合并（每应用一图标，
+    /// 窗口数用圆点表示）。合并模式下不再显示窗口数量角标，避免重复表达。
+    var windowDisplayMode: WindowDisplayMode {
+        get { raw(K.windowDisplayMode, .split) }
+        set { setRaw(newValue, K.windowDisplayMode) }
+    }
     /// "Faster desktop switch": intercept the trackpad space-switch swipe and jump
     /// instantly, skipping macOS's slide animation. Off by default — it changes how
     /// the swipe lands and uses private APIs. Acted on by `AppDelegate` (which

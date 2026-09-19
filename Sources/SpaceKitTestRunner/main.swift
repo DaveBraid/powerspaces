@@ -1658,6 +1658,38 @@ h.test("current Space is readable, or skipped") {
     }
 }
 
+print("Dock window display mode")
+h.test("merged mode never splits icons, even with window labels on") {
+    // 标题模式本身也会拆分图标；合并模式必须同时关掉两条路径才能真正合并。
+    h.ok(!DockRefresher.expandsPerWindow(mode: .merged, iconPerWindow: true, windowLabels: true),
+         "merged wins over both split switches")
+    h.ok(!DockRefresher.expandsPerWindow(mode: .merged, iconPerWindow: false, windowLabels: false),
+         "merged with both off")
+    h.ok(DockRefresher.expandsPerWindow(mode: .split, iconPerWindow: true, windowLabels: false),
+         "split follows the per-window-icons switch")
+    h.ok(DockRefresher.expandsPerWindow(mode: .split, iconPerWindow: false, windowLabels: true),
+         "window labels split too")
+    h.ok(!DockRefresher.expandsPerWindow(mode: .split, iconPerWindow: false, windowLabels: false),
+         "split with both off stays merged per app")
+}
+
+h.test("window count follows the current Space only") {
+    // 合并模式的圆点数量取 windowCount（当前桌面的窗口数），
+    // 因此另一个桌面有窗口时本桌面计数为 0。
+    let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: [
+        dwin(1, 100, name: "Zed", bundle: "dev.zed.Zed",
+             rect: CGRect(x: 10, y: 10, width: 400, height: 300), spaces: [1]),
+        dwin(2, 100, name: "Zed", bundle: "dev.zed.Zed",
+             rect: CGRect(x: 20, y: 20, width: 400, height: 300), spaces: [2]),
+    ])
+    let here = DockModel.apps(onCurrentSpace: snapshot)
+    h.eq(here.first(where: { $0.bundleID == "dev.zed.Zed" })?.windowCount, 1,
+         "one window on this Space")
+    let onTwo = SpaceSnapshot(activeSpaceID: 2, windows: snapshot.windows)
+    h.eq(DockModel.apps(onCurrentSpace: onTwo).first(where: { $0.bundleID == "dev.zed.Zed" })?.windowCount, 1,
+         "the other Space sees its own window")
+}
+
 print("Window layout geometry")
 h.test("dock reservation only subtracts space the system has not already reserved") {
     // 主屏实测：物理边界 2560x1440，系统可用区 y=30..1361（已扣菜单栏与 macOS 自己的

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import AppKit
+import SpaceKit
 
 // The value types behind the preferences UI: the `NumericSpec` descriptor for
 // preset-or-custom numbers, and the non-numeric choice enums each dropdown binds
@@ -290,6 +291,24 @@ enum AutoHideAnimation: String, CaseIterable, Identifiable {
 }
 
 /// How the per-desktop dock behaves on a screen that's showing a full-screen app.
+/// 一个应用在当前桌面有多个窗口时，程序坞如何呈现。
+enum WindowDisplayMode: String, CaseIterable, Identifiable {
+    /// 拆分：每个窗口一个图标，以窗口标题命名（含「显示窗口标题」时）。
+    case split
+    /// 合并：每个应用一个图标；圆点数量等于当前桌面的窗口数，
+    /// 无窗口但仍在运行时用一个空心圆表示未退出。
+    case merged
+    var id: String { rawValue }
+    /// 供 SpaceKit 纯函数使用的对应模型。
+    var spaceKitMode: DockWindowDisplayMode { self == .merged ? .merged : .split }
+    var label: String {
+        switch self {
+        case .split: return L10n.string("One icon per window")
+        case .merged: return L10n.string("One icon per app")
+        }
+    }
+}
+
 enum FullscreenDockBehavior: String, CaseIterable, Identifiable {
     /// Remove the bar entirely while a full-screen app owns the screen; it can't be
     /// revealed (the full-screen app gets the whole screen).

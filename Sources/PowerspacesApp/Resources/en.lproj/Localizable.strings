@@ -652,3 +652,9 @@
 "Take over window layout commands and animate straight to the size that clears the dock, instead of maximising first and shrinking afterwards." = "Take over window layout commands and animate straight to the size that clears the dock, instead of maximising first and shrinking afterwards.";
 "Window layout" = "Window layout";
 "Covers Option-click on the green button, double-clicking a title bar, Fn-Control-F/R/arrow keys, and the layout items in the Window menu. Full-screen and multi-window arrangements keep their system behaviour, and any command that cannot be identified with confidence is left to macOS." = "Covers Option-click on the green button, double-clicking a title bar, Fn-Control-F/R/arrow keys, and the layout items in the Window menu. Full-screen and multi-window arrangements keep their system behaviour, and any command that cannot be identified with confidence is left to macOS.";
+
+// 多窗口应用的呈现方式（拆分 / 合并）。
+"Multiple windows" = "Multiple windows";
+"One icon per window" = "One icon per window";
+"One icon per app" = "One icon per app";
+"One icon per window keeps a separate item for each window (named by its title when titles are on). One icon per app keeps a single item and shows the window count with dots instead." = "One icon per window keeps a separate item for each window (named by its title when titles are on). One icon per app keeps a single item and shows the window count with dots instead.";

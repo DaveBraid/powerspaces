@@ -15,6 +15,16 @@ import Foundation
 /// same seam the rest of `SpaceKit` uses.
 public enum DockRefresher {
     /// How the running/pinned app list becomes the final per-window display list.
+    /// 是否把一个应用的多个窗口拆成多个图标。
+    ///
+    /// 合并模式必须同时关掉「每窗口一图标」与「窗口标题」两条路径——标题模式本身
+    /// 也会拆分图标，只关前者不足以真正合并。抽成纯函数便于单测这条规则。
+    public static func expandsPerWindow(mode: DockWindowDisplayMode,
+                                        iconPerWindow: Bool, windowLabels: Bool) -> Bool {
+        guard mode == .split else { return false }
+        return iconPerWindow || windowLabels
+    }
+
     public struct DisplayOptions {
         /// Expand each multi-window app into one entry per window (the "Windows"
         /// feature; also implied by window labels). Off → one icon per app.

@@ -722,7 +722,7 @@ final class DockPanel: NSPanel {
             button.toolTip = tooltip(for: app)
             // 图标按全局窗口状态调暗；小圆点仍独立指示进程运行，不一起变暗。
             (button.cell as? DockItemCell)?.iconOpacity = !app.isLauncher && !app.hasOpenWindows ? dim : 1
-            button.setRunningDot(app.isRunning && !app.isLauncher)
+            button.setIndicator(indicator(for: app))
             if boxed {
                 button.setRunningBox(active: app.isRunning,
                                      gap: CGFloat(prefs.boxGap),
@@ -738,8 +738,11 @@ final class DockPanel: NSPanel {
             // A window-count badge for an app with several windows here — but only
             // when we're not already showing one icon per window (which would make
             // the count redundant), and never on the launcher tile.
-            let perWindow = prefs.showIconPerWindow || prefs.showWindowLabels
-            if !perWindow, !app.isLauncher, app.windowCount > 1 {
+            // 合并模式用圆点表达窗口数，因此不显示角标，避免同一信息重复两遍。
+            let perWindow = prefs.windowDisplayMode == .split
+                && (prefs.showIconPerWindow || prefs.showWindowLabels)
+            let merged = prefs.windowDisplayMode == .merged
+            if !perWindow, !merged, !app.isLauncher, app.windowCount > 1 {
                 button.setWindowBadge(count: app.windowCount)
             }
             button.onActivate = { [weak self] app, forceNew in
@@ -1265,6 +1268,18 @@ final class DockPanel: NSPanel {
     private var magnificationReservedFrame: NSRect?
     var pointerInteractionFrame: NSRect { magnificationVisibleFrame ?? frame }
     private var magnificationRestFrame = NSRect.zero
+    /// 该条目在程序坞里显示什么指示标记。
+    ///
+    /// 拆分模式维持原有单点语义（运行即一点）。合并模式下圆点数量严格等于
+    /// **当前桌面**的窗口数：0 个窗口但仍在运行时用一个空心圆表示没有完全退出；
+    /// 已退出（仅因固定而保留）不显示任何圆点，沿用现有灰显规则。
+    private func indicator(for app: DockApp) -> DockButton.Indicator {
+        DockButton.indicator(mode: Preferences.shared.windowDisplayMode.spaceKitMode,
+                             isLauncher: app.isLauncher,
+                             isRunning: app.isRunning,
+                             windowCount: app.windowCount)
+    }
+
     /// 供窗口避让使用的静止预留：自屏幕物理边起到**可见玻璃外沿**为止的厚度。
     ///
     /// 位置取自窗口服务器（`CGWindowListCopyWindowInfo`）：AppKit 的 window `frame`

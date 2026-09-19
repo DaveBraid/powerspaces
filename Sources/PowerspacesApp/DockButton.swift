@@ -58,18 +58,73 @@ final class DockButton: NSButton {
         return insets
     }
     private var runningDot: AdaptiveDockMark?
+    /// 额外的窗口计数圆点（合并模式）。第一个圆点复用 `runningDot`，
+    /// 因此拆分模式与「仅运行」的单点行为完全不变。
+    private var extraDots: [AdaptiveDockMark] = []
 
-    /// 运行标记独立于固定项变灰和旧的边框样式；随图标布局但不接管鼠标。
-    func setRunningDot(_ running: Bool) {
-        runningDot?.removeFromSuperview()
-        runningDot = nil
-        guard running else { return }
-        let dot = AdaptiveDockMark(circular: true)
-        dot.alignment = .center
-        dot.setAccessibilityElement(false)
-        addSubview(dot)
-        runningDot = dot
+    /// 图标下方的运行/窗口指示。
+    enum Indicator: Equatable {
+        /// 不显示指示（已退出、或该条目不是应用）。
+        case none
+        /// 单个实心圆点：应用在运行。拆分模式与原有行为。
+        case running
+        /// 合并模式：当前桌面有 `count` 个窗口 → `count` 个实心圆点。
+        case windows(Int)
+        /// 合并模式：应用在运行但当前桌面没有窗口 → 一个空心圆。
+        case runningWithoutWindows
+    }
+
+    /// 设置指示标记。合并模式的圆点数量严格等于当前桌面的窗口数；
+    /// 无窗口但仍在运行时用空心圆表示「没有完全退出」。
+    func setIndicator(_ indicator: Indicator) {
+        let wanted: (count: Int, hollow: Bool)
+        switch indicator {
+        case .none: wanted = (0, false)
+        case .running: wanted = (1, false)
+        case .windows(let count): wanted = (max(0, count), false)
+        case .runningWithoutWindows: wanted = (1, true)
+        }
+        // 圆点总数为 1 时走原有单点路径，保持几何与拆分模式一致。
+        while extraDots.count > max(0, wanted.count - 1) {
+            extraDots.removeLast().removeFromSuperview()
+        }
+        if runningDot == nil, wanted.count > 0 {
+            let dot = AdaptiveDockMark(circular: true)
+            dot.alignment = .center
+            dot.setAccessibilityElement(false)
+            addSubview(dot)
+            runningDot = dot
+        }
+        if wanted.count == 0 {
+            runningDot?.removeFromSuperview()
+            runningDot = nil
+        }
+        runningDot?.isHollow = wanted.hollow
+        while extraDots.count < wanted.count - 1 {
+            let dot = AdaptiveDockMark(circular: true)
+            dot.alignment = .center
+            dot.setAccessibilityElement(false)
+            addSubview(dot)
+            extraDots.append(dot)
+        }
+        for dot in extraDots { dot.isHollow = wanted.hollow }
         needsLayout = true
+    }
+
+    /// 兼容原有单点调用：`true` 等价于 `.running`。
+    func setRunningDot(_ running: Bool) {
+        setIndicator(running ? .running : .none)
+    }
+
+    /// 指示标记的纯规则：拆分模式一点表示运行；合并模式圆点数严格等于
+    /// **当前桌面**的窗口数，无窗口但仍在运行时用空心圆表示没有完全退出，
+    /// 已退出（仅因固定而保留）不显示圆点。
+    nonisolated static func indicator(mode: DockWindowDisplayMode, isLauncher: Bool,
+                                      isRunning: Bool, windowCount: Int) -> Indicator {
+        guard !isLauncher else { return .none }
+        guard mode == .merged else { return isRunning ? .running : .none }
+        if windowCount > 0 { return .windows(windowCount) }
+        return isRunning ? .runningWithoutWindows : .none
     }
 
     /// The app this icon stands for. Carried on the button (instead of an index
@@ -402,17 +457,27 @@ final class DockButton: NSButton {
         let imageRect = cell?.imageRect(forBounds: bounds) ?? bounds
         windowBadge?.place(relativeTo: imageRect, flipped: isFlipped)
         notificationBadge?.place(relativeTo: imageRect, flipped: isFlipped)
-        switch Preferences.shared.barPosition {
-        case .bottom:
-            runningDot?.frame = NSRect(x: imageRect.midX - size / 2,
-                y: isFlipped ? bounds.maxY + gap : -gap - size, width: size, height: size)
-        case .top:
-            runningDot?.frame = NSRect(x: imageRect.midX - size / 2,
-                y: isFlipped ? -gap - size : bounds.maxY + gap, width: size, height: size)
-        case .left:
-            runningDot?.frame = NSRect(x: -gap - size + crossAxisCenteringOffset, y: imageRect.midY - size / 2, width: size, height: size)
-        case .right:
-            runningDot?.frame = NSRect(x: bounds.maxX + gap + crossAxisCenteringOffset, y: imageRect.midY - size / 2, width: size, height: size)
+        // 多个圆点时沿停靠轴均匀排开（间距用一个圆点直径），整体在图标上居中。
+        let allDots = ([runningDot].compactMap { $0 }) + extraDots
+        let spacing = size
+        let totalLength = CGFloat(allDots.count) * size + CGFloat(max(0, allDots.count - 1)) * spacing
+        let startOffset = -totalLength / 2 + size / 2
+        for (index, dot) in allDots.enumerated() {
+            let along = startOffset + CGFloat(index) * (size + spacing)
+            switch Preferences.shared.barPosition {
+            case .bottom:
+                dot.frame = NSRect(x: imageRect.midX + along - size / 2,
+                    y: isFlipped ? bounds.maxY + gap : -gap - size, width: size, height: size)
+            case .top:
+                dot.frame = NSRect(x: imageRect.midX + along - size / 2,
+                    y: isFlipped ? -gap - size : bounds.maxY + gap, width: size, height: size)
+            case .left:
+                dot.frame = NSRect(x: -gap - size + crossAxisCenteringOffset,
+                    y: imageRect.midY + along - size / 2, width: size, height: size)
+            case .right:
+                dot.frame = NSRect(x: bounds.maxX + gap + crossAxisCenteringOffset,
+                    y: imageRect.midY + along - size / 2, width: size, height: size)
+            }
         }
         if let adaptiveTitle, let cell {
             adaptiveTitle.frame = cell.titleRect(forBounds: bounds)

@@ -57,6 +57,9 @@ if CommandLine.arguments.contains("--check-dock-layout") {
 if CommandLine.arguments.contains("--check-quit") {
     exit(DevelopmentTools.checkQuitAction() ? 0 : 1)
 }
+if CommandLine.arguments.contains("--check-merged-indicators") {
+    exit(DevelopmentTools.checkMergedIndicators() ? 0 : 1)
+}
 if CommandLine.arguments.contains("--dump-window-layout") {
     DevelopmentTools.dumpWindowLayoutGeometry()
     exit(0)

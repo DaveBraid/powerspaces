@@ -105,6 +105,10 @@ final class AdaptiveDockMark: AdaptiveDockLabel {
     // 几何标记不能继承文字控件左右各 2 点的对齐边距。
     override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
     private let circular: Bool
+    /// 空心标记：只描边不填充，用于表示「应用在运行、但当前桌面没有窗口」。
+    var isHollow = false {
+        didSet { if isHollow != oldValue { needsDisplay = true } }
+    }
     init(circular: Bool, gray: Bool = false) {
         self.circular = circular
         super.init(text: "", font: .systemFont(ofSize: 1), gray: gray)
@@ -112,9 +116,17 @@ final class AdaptiveDockMark: AdaptiveDockLabel {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func draw(_ dirtyRect: NSRect) {
-        (textColor ?? .secondaryLabelColor).setFill()
         let path = circular ? NSBezierPath(ovalIn: bounds) : NSBezierPath(rect: bounds)
-        path.fill()
+        let color = textColor ?? .secondaryLabelColor
+        guard isHollow else {
+            color.setFill()
+            path.fill()
+            return
+        }
+        // 描边宽度按尺寸收敛，避免小圆点被描边糊成一个实心点。
+        color.setStroke()
+        path.lineWidth = max(1, min(bounds.width, bounds.height) * 0.22)
+        path.stroke()
     }
 }
 

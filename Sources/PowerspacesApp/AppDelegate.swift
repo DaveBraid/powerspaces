@@ -929,8 +929,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             runningBundleIDs: displaySnapshot.runningBundleIDs)
         // "Windows" feature: per-window icons, and/or the wide window-title mode
         // (which is also one item per window). Both expand the app list per window.
+        // 合并模式必须同时关掉「每窗口一图标」与「窗口标题拆分」——
+        // 标题模式会隐式拆分图标，只关前者不足以合并。
+        let perWindow = DockRefresher.expandsPerWindow(
+            mode: prefs.windowDisplayMode.spaceKitMode,
+            iconPerWindow: prefs.showIconPerWindow,
+            windowLabels: prefs.showWindowLabels)
         let options = DockRefresher.DisplayOptions(
-            expandPerWindow: prefs.showIconPerWindow || prefs.showWindowLabels,
+            expandPerWindow: perWindow,
             shouldLabel: { prefs.showsWindowLabel(windowCount: $0) })
         // A fresh per-refresh reader memoizes each app's AX window list, so an app
         // with several labeled windows is fetched once, not once per window. Shared

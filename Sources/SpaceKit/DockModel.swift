@@ -6,6 +6,17 @@ import CoreGraphics
 import Foundation
 
 /// One entry in the per-space dock.
+/// 多窗口应用在程序坞里的呈现方式。
+///
+/// 与 `Preferences.windowDisplayMode` 的 raw value 一一对应；SpaceKit 不依赖应用层，
+/// 因此在这里定义一份纯模型。
+public enum DockWindowDisplayMode: String, Sendable {
+    /// 每个窗口一个图标（含窗口标题模式）。
+    case split
+    /// 每个应用一个图标；窗口数由圆点数量表达。
+    case merged
+}
+
 public struct DockApp: Equatable, Sendable {
     public let bundleID: String?
     public let name: String

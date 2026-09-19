@@ -310,6 +310,38 @@ enum DevelopmentTools {
     }
 
     /// 独立进程内核对私有桥接与非焦点渲染，未安装前即可发现 ABI 或材质失效。
+    /// 合并模式的指示规则自检：圆点数量必须严格等于当前桌面的窗口数。
+    @MainActor static func checkMergedIndicators() -> Bool {
+        var failures = 0
+        func check(_ condition: Bool, _ message: String) {
+            if condition { print("  ✓ \(message)") } else { print("  ✗ \(message)"); failures += 1 }
+        }
+        // 合并模式：N 个窗口 → N 个实心圆点。
+        for count in 0...4 {
+            check(DockButton.indicator(mode: .merged, isLauncher: false,
+                                       isRunning: true, windowCount: count)
+                    == (count > 0 ? .windows(count) : .runningWithoutWindows),
+                  "merged: \(count) window(s) → \(count > 0 ? "\(count) dots" : "one hollow dot")")
+        }
+        // 已退出（仅因固定而保留）：没有圆点。
+        check(DockButton.indicator(mode: .merged, isLauncher: false,
+                                   isRunning: false, windowCount: 0) == .none,
+              "merged: pinned but not running shows no dot")
+        // 拆分模式保持原有单点语义。
+        check(DockButton.indicator(mode: .split, isLauncher: false,
+                                   isRunning: true, windowCount: 3) == .running,
+              "split: running shows the single classic dot")
+        check(DockButton.indicator(mode: .split, isLauncher: false,
+                                   isRunning: false, windowCount: 0) == .none,
+              "split: not running shows no dot")
+        // 启动器不是应用，永远没有指示。
+        check(DockButton.indicator(mode: .merged, isLauncher: true,
+                                   isRunning: true, windowCount: 2) == .none,
+              "the app launcher never shows an indicator")
+        print(failures == 0 ? "Merged indicators: verified" : "Merged indicators: \(failures) failed")
+        return failures == 0
+    }
+
     @MainActor static func checkNativeDockMaterial() -> Bool {
         _ = NSApplication.shared
         guard let recipe = NativeDockRecipe.shared else {

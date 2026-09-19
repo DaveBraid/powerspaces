@@ -243,6 +243,8 @@ struct PreferencesView: View {
         .init(name: "Hide the macOS Dock", tab: 6, keywords: "apple dock"),
         .init(name: "Avoid the dock when arranging windows", tab: 6,
               keywords: "window layout arrange maximize zoom tile dock avoidance"),
+        .init(name: "Multiple windows", tab: 3,
+              keywords: "window icon split merge per window count dots indicator"),
         .init(name: "Raycast extension", tab: 6, keywords: "raycast cli spotlight"),
         .init(name: "Per-desktop ⌘-Tab (AltTab)", tab: 6, keywords: "alttab cmd tab switcher"),
         .init(name: "Menu-bar icon", tab: 6, keywords: "glyph status"),
@@ -629,9 +631,17 @@ struct PreferencesView: View {
     private var windowsTab: some View {
         Form {
             Section {
+                enumPicker(L10n.string("Multiple windows"),
+                           help: L10n.string(
+                               "One icon per window keeps a separate item for each window (named by "
+                               + "its title when titles are on). One icon per app keeps a single item "
+                               + "and shows the window count with dots instead."),
+                           bind(\.windowDisplayMode)) { $0.label }
                 Toggle(L10n.string("Show an icon per open window"), isOn: bind(\.showIconPerWindow))
                     .help(L10n.string("Duplicate an app's icon for each window it has on this desktop."))
+                    .disabled(prefs.windowDisplayMode != .split)
                 Toggle(L10n.string("Show window titles (wide items)"), isOn: bind(\.showWindowLabels))
+                    .disabled(prefs.windowDisplayMode != .split)
                     .help(L10n.string(
                         "Make each window a wider item with its title in white text, like the Windows"
                         + " taskbar. Titles are read live via Accessibility (for a browser that's the "
