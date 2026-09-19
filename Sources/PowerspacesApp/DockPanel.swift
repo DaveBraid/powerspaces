@@ -351,7 +351,7 @@ final class DockPanel: NSPanel {
     /// than its contents, so the smallest setting hugs the icons exactly.
     private func barThickness() -> CGFloat {
         max(CGFloat(Preferences.shared.dockHeight),
-            (magnificationItems.isEmpty ? contentCross() : magnificationRestCross) + CGFloat(Preferences.shared.runningDotGap) + 16)
+            (magnificationItems.isEmpty ? contentCross() : magnificationRestCross) + 2 * (CGFloat(Preferences.shared.runningDotGap) + 10))
     }
 
     /// Frames the blur to `barThickness` across and the full window length along
@@ -394,8 +394,10 @@ final class DockPanel: NSPanel {
         case .left:   effectCross = effect.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: opticalInset)
         case .right:  effectCross = effect.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -opticalInset)
         }
-        // 外侧锚点使用固定留白；内容放大只向屏幕内侧增长，圆点的屏幕横/纵坐标不漂移。
-        let inset = CGFloat(Preferences.shared.runningDotGap) + 10
+        // 静止图标按玻璃厚度居中；圆点占用对称预留区，不再把图标推向内侧。
+        // 缩放仍以静止外沿为锚点，保持原生向内生长和圆点基线不动。
+        let restingCross = magnificationItems.isEmpty ? contentCross() : magnificationRestCross
+        let inset = max(0, (barThickness() - restingCross) / 2)
         switch pos {
         case .bottom: stackCrossCenter = stack.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -inset)
         case .top: stackCrossCenter = stack.topAnchor.constraint(equalTo: effect.topAnchor, constant: inset)
@@ -409,6 +411,19 @@ final class DockPanel: NSPanel {
         stackAlongStart?.isActive = true
         stackAlongEnd?.isActive = true
         stackCrossCenter?.isActive = true
+    }
+
+    /// 内容或标题宽度改变后同步玻璃厚度与外沿；缩放时始终采用静止尺寸。
+    private func updateBarGeometry() {
+        let cross = magnificationItems.isEmpty ? contentCross() : magnificationRestCross
+        let inset = max(0, (barThickness() - cross) / 2)
+        effectThickness?.constant = barThickness()
+        let position = Preferences.shared.barPosition
+        stackCrossCenter?.constant = (position == .bottom || position == .right) ? -inset : inset
+        for case let button as DockButton in stack.arrangedSubviews {
+            let offset = position.isVertical ? max(0, (cross - button.restingWidth) / 2) : 0
+            button.crossAxisCenteringOffset = position == .left ? -offset : offset
+        }
     }
 
     /// The window size for the current stack. Along the bar it fits the icons; the
@@ -712,7 +727,7 @@ final class DockPanel: NSPanel {
         layOutDesktopIndicator() // (re)home the "Desktop N" badge for this layout
         addEmptyHintIfNeeded() // a gentle hint when the desktop's dock is otherwise empty
         layoutIfNeeded()
-        effectThickness?.constant = barThickness() // now that the icons set the content size
+        updateBarGeometry() // 项目尺寸稳定后同步厚度与静止居中锚点。
         // Arrivals: open their slots and let them appear (the bar grows to fit).
         // Otherwise size the window to the finished layout right away.
         if entered.isEmpty {
@@ -846,7 +861,7 @@ final class DockPanel: NSPanel {
                 }
                 for morph in survivorMorphs { morph.button.widthConstraint?.constant = morph.to }
                 self.layoutIfNeeded()
-                self.effectThickness?.constant = self.barThickness()
+                self.updateBarGeometry()
                 self.sizeWindowToStack()
             }, completionHandler: { [weak self] in
                 MainActor.assumeIsolated {
@@ -894,7 +909,7 @@ final class DockPanel: NSPanel {
                     ctx.allowsImplicitAnimation = true
                     for morph in survivorMorphs { morph.button.widthConstraint?.constant = morph.to }
                     self.layoutIfNeeded()
-                    self.effectThickness?.constant = self.barThickness()
+                    self.updateBarGeometry()
                     self.sizeWindowToStack()
                 }, completionHandler: { [weak self] in
                     MainActor.assumeIsolated {
@@ -946,7 +961,7 @@ final class DockPanel: NSPanel {
             along(button)?.constant = 0
         }
         layoutIfNeeded()
-        effectThickness?.constant = barThickness()
+        updateBarGeometry()
         setContentSize(panelSize())
         reposition()
         invalidateShadow()

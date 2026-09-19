@@ -42,6 +42,7 @@ enum DevelopmentTools {
         prefs.hoverScale = 1.5
         prefs.hoverAnimation = 0
         prefs.runningDotGap = 7
+        prefs.dockHeight = 140 // 明显大于图标，防止固定外沿留白伪装成居中。
         prefs.showWindowLabels = false
         var failures = 0
         func buttons(_ view: NSView) -> [DockButton] {
@@ -56,7 +57,7 @@ enum DevelopmentTools {
             let panel = DockPanel(screen: screen)
             panel.update(apps: [
                 DockApp(bundleID: "one", name: "One", pid: 1, windowCount: 1, isPinnedHere: true),
-                DockApp(bundleID: "two", name: "Two", pid: 2, windowCount: 1),
+                DockApp(bundleID: "two", name: "Longer application title", pid: 2, windowCount: 1),
             ], animateChanges: false)
             panel.show()
             RunLoop.main.run(until: Date().addingTimeInterval(0.05))
@@ -74,6 +75,19 @@ enum DevelopmentTools {
             }
             panel.contentView?.layoutSubtreeIfNeeded()
             let before = centers()
+            if let first = before.first, !before.allSatisfy({
+                abs(position.isVertical ? $0.x - first.x : $0.y - first.y) < 1
+            }) { failures += 1; print("FAIL shared indicator baseline \(position)") }
+            func restingTree(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(restingTree) }
+            if let glass = restingTree(panel.contentView!).compactMap({ $0 as? GlassSurfaceView }).first {
+                let surface = glass.convert(glass.bounds, to: nil)
+                let iconsCentered = items.allSatisfy { button in
+                    let rect = labeled && position.isVertical ? button.bounds : button.cell!.imageRect(forBounds: button.bounds)
+                    let image = button.convert(rect, to: nil)
+                    return abs(position.isVertical ? image.midX - surface.midX : image.midY - surface.midY) < 1
+                }
+                if !iconsCentered { failures += 1; print("FAIL resting icon centering \(position)") }
+            }
             let widths = items.map { $0.widthConstraint?.constant ?? 0 }
             let restingFrames = items.map { panel.convertToScreen($0.convert($0.bounds, to: nil)) }
             panel.previewMagnification()

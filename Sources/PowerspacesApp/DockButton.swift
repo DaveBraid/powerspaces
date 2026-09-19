@@ -27,6 +27,19 @@ final class DockButton: NSButton {
     var onPointerMoved: ((NSPoint) -> Void)?
     var usesSharedMagnification = false
     var restingWidth: CGFloat = 0
+    var crossAxisCenteringOffset: CGFloat = 0 {
+        didSet {
+            if oldValue != crossAxisCenteringOffset { invalidateIntrinsicContentSize(); needsUpdateConstraints = true; needsLayout = true }
+        }
+    }
+
+    /// 侧边停靠时平移布局对齐框，让不同宽度的标题组合都居中；不改变按钮尺寸和点击区域。
+    override var alignmentRectInsets: NSEdgeInsets {
+        var insets = super.alignmentRectInsets
+        insets.left += crossAxisCenteringOffset
+        insets.right -= crossAxisCenteringOffset
+        return insets
+    }
     private var runningDot: AdaptiveDockMark?
 
     /// 运行标记独立于固定项变灰和旧的边框样式；随图标布局但不接管鼠标。
@@ -380,9 +393,9 @@ final class DockButton: NSButton {
             runningDot?.frame = NSRect(x: imageRect.midX - size / 2,
                 y: isFlipped ? -gap - size : bounds.maxY + gap, width: size, height: size)
         case .left:
-            runningDot?.frame = NSRect(x: -gap - size, y: imageRect.midY - size / 2, width: size, height: size)
+            runningDot?.frame = NSRect(x: -gap - size + crossAxisCenteringOffset, y: imageRect.midY - size / 2, width: size, height: size)
         case .right:
-            runningDot?.frame = NSRect(x: bounds.maxX + gap, y: imageRect.midY - size / 2, width: size, height: size)
+            runningDot?.frame = NSRect(x: bounds.maxX + gap + crossAxisCenteringOffset, y: imageRect.midY - size / 2, width: size, height: size)
         }
         if let adaptiveTitle, let cell {
             adaptiveTitle.frame = cell.titleRect(forBounds: bounds)
