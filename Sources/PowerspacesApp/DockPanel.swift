@@ -261,41 +261,6 @@ final class DockPanel: NSPanel {
         applyOrientation()
         apps = [] // force update() to rebuild rather than treat contents as unchanged
         applyAutoHide() // the auto-hide settings may have changed
-        installScrollMonitor()
-    }
-
-    /// 安装滚轮监听：指针位于本程序坞上且内容超出可见长度时，横向滚动图标行。
-    ///
-    /// 用本地监听而不是改造 stack 的约束链：图标仍留在玻璃的 contentView 里，
-    /// 只平移其 frame，因此缩放、拖拽与自动隐藏的既有几何都不受影响。
-    private func installScrollMonitor() {
-        guard scrollMonitor == nil else { return }
-        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            guard let self else { return event }
-            return self.handleScroll(event) ? nil : event
-        }
-    }
-
-    /// 处理滚轮事件；返回 true 表示已消费。
-    private func handleScroll(_ event: NSEvent) -> Bool {
-        let maxOffset = maxScrollOffset
-        guard maxOffset > 0 else { return false }
-        // 指针必须在程序坞上，否则不拦截滚动。
-        // DockPanel 是窗口而非视图：用窗口自身的屏幕范围判定指针是否在程序坞上。
-        guard let windowPoint = event.window == self
-                ? Optional(event.locationInWindow)
-                : nil,
-              frame.contains(windowPoint) || frame.insetBy(dx: -8, dy: -8).contains(windowPoint)
-                || self.frame.contains(NSEvent.mouseLocation)
-                || self.frame.insetBy(dx: -8, dy: -8).contains(NSEvent.mouseLocation) else { return false }
-        let delta = event.scrollingDeltaX != 0 ? event.scrollingDeltaX : event.scrollingDeltaY
-        guard delta != 0 else { return false }
-        let before = scrollOffset
-        scrollOffset = min(max(0, scrollOffset - delta), maxOffset)
-        guard scrollOffset != before else { return true }
-        layoutIfNeeded()
-        applyScrollOffset()
-        return true
     }
 
     /// Draws (or clears) the outline around the whole bar. A `borderWidth` of 0
@@ -524,79 +489,8 @@ final class DockPanel: NSPanel {
         }
         size.width += 2 * opticalInset
         size.height += 2 * opticalInset
-        var result = padded(size)
-        // 沿停靠轴钳制到屏幕可用长度：内容过长时保持窗口在屏内，改为内部滚动。
-        if let screen = boundScreen {
-            let limit = (prefs.barPosition.isVertical
-                ? screen.visibleFrame.height : screen.visibleFrame.width)
-                * DockLengthFit.maximumScreenFraction
-            if prefs.barPosition.isVertical {
-                result.height = min(result.height, limit)
-            } else {
-                result.width = min(result.width, limit)
-            }
-        }
-        return result
+        return padded(size)
     }
-
-    /// 设置内容尺寸前先决定滚动模式：内容超出时解开图标行的两端约束并交出 frame，
-    /// 否则约束会把玻璃按内容宽度撑住，`setContentSize` 的宽度被静默忽略。
-    private func applyScrollAndSize(_ size: NSSize) {
-        applyScrollOffset()
-        setContentSize(size)
-    }
-
-    /// 图标行的自然总长（用于判断是否需要滚动）。
-    private func contentLength() -> CGFloat {
-        let size = naturalStackSize()
-        return Preferences.shared.barPosition.isVertical ? size.height : size.width
-    }
-
-    /// 可滚动的最大偏移；0 表示内容装得下、不需要滚动。
-    private func maximumScrollOffset(forVisibleLength visible: CGFloat) -> CGFloat {
-        max(0, contentLength() - visible)
-    }
-
-    /// 把滚动偏移应用到图标行。放大路径自行处理偏移，这里只处理静止态。
-    ///
-    /// 超出可见长度时必须解开图标行两端的对齐约束：它们会把玻璃按内容宽度撑开，
-    /// 使面板无法收窄（实测宽度被顶在 3298pt）。解开后由 frame 接管。
-    private func applyScrollOffset() {
-        guard magnificationItems.isEmpty else { return } // 放大中由放大几何接管
-        let glass = effect.glassContent.bounds
-        let vertical = Preferences.shared.barPosition.isVertical
-        // 可用长度取「钳制后的面板长度」，不能用玻璃当前 bounds —— 约束把玻璃撑开后
-        // 那个值是结果而不是上限（实测报 3298，导致永远判定为「装得下」）。
-        let limit = (vertical
-            ? boundScreen?.visibleFrame.height : boundScreen?.visibleFrame.width) ?? 0
-        let visible = min(vertical ? glass.height : glass.width,
-                          limit * DockLengthFit.maximumScreenFraction)
-        let content = contentLength()
-        let overflowing = content > visible + 1
-        maxScrollOffset = max(0, content - visible)
-        scrollOffset = min(max(0, scrollOffset), maxScrollOffset)
-
-        if overflowing {
-            stackAlongStart?.isActive = false
-            stackAlongEnd?.isActive = false
-            stack.translatesAutoresizingMaskIntoConstraints = true
-            if vertical {
-                stack.frame = NSRect(x: stack.frame.minX, y: -scrollOffset,
-                                     width: glass.width, height: content)
-            } else {
-                stack.frame = NSRect(x: -scrollOffset, y: stack.frame.minY,
-                                     width: content, height: glass.height)
-            }
-        } else if stackAlongStart?.isActive == false {
-            // 回到装得下的状态：恢复原有对齐约束，交还给 Auto Layout。
-            stack.translatesAutoresizingMaskIntoConstraints = false
-            applyBarFrame()
-            scrollOffset = 0
-        }
-    }
-
-    /// 上一次计算的滚动上限（`handleScroll` 使用）。
-    private var maxScrollOffset: CGFloat = 0
 
     // MARK: - Current-desktop indicator
 
@@ -702,8 +596,6 @@ final class DockPanel: NSPanel {
     /// it off on a Space switch, where the whole list changes at once and a per-icon
     /// animation would be wrong.
     func update(apps: [DockApp], animateChanges: Bool = true) {
-        // 先按条目数量与该屏可用长度定出图标缩放：内容过长时缩小图标并收窄厚度，
-        // 而不是让程序坞伸出屏幕（与原生 Dock 一致）。
         // Don't rebuild out from under an in-progress drag (reorder or drag-in) —
         // we'll pick up the saved order on the refresh that follows the drop.
         guard !isContextMenuOpen, !isReordering, !isExternalDragging else { return }
@@ -888,7 +780,7 @@ final class DockPanel: NSPanel {
         // Arrivals: open their slots and let them appear (the bar grows to fit).
         // Otherwise size the window to the finished layout right away.
         if entered.isEmpty {
-            applyScrollAndSize(panelSize())
+            setContentSize(panelSize())
             reposition()
             // The window now has transparent margin around a centered bar;
             // recompute the shadow so it hugs the bar instead of the full window.
@@ -1037,7 +929,7 @@ final class DockPanel: NSPanel {
         // Open transparent room (seamlessly — the bar doesn't move) so a poof's
         // growth or a slide's travel is drawn instead of clipped at the window edge.
         animationCrossPad = CGFloat(prefs.iconSize)
-        applyScrollAndSize(panelSize())
+        setContentSize(panelSize())
         reposition()
         invalidateShadow()
         // Beat 1: the leaving icons disappear where they sit (their slots stay open).
@@ -1122,7 +1014,7 @@ final class DockPanel: NSPanel {
         }
         layoutIfNeeded()
         updateBarGeometry()
-        applyScrollAndSize(panelSize())
+        setContentSize(panelSize())
         reposition()
         invalidateShadow()
         // Beat 1: open the slots and grow the bar to fit.
@@ -1153,7 +1045,7 @@ final class DockPanel: NSPanel {
                         // Close the transparent room back to the snug fit (the bar doesn't
                         // move, so this is invisible).
                         self.animationCrossPad = 0
-                        self.applyScrollAndSize(self.panelSize())
+                        self.setContentSize(self.panelSize())
                         self.reposition()
                         self.invalidateShadow()
                         // Apply anything that arrived mid-animation; otherwise the stack
@@ -1375,13 +1267,6 @@ final class DockPanel: NSPanel {
         let view: NSView
         let frame: NSRect
     }
-    /// 条目总长超出屏幕时的横向滚动偏移（沿停靠轴，≥0 表示已向右/下滚动）。
-    /// 窗口与玻璃保持钳制在屏内，只有图标行在玻璃内部平移，因此缩放、拖拽与
-    /// 自动隐藏的既有几何都不受影响。
-    private var scrollOffset: CGFloat = 0
-    /// 滚动事件监听；指针位于本程序坞上时消费滚轮，否则不干预。
-    nonisolated(unsafe) private var scrollMonitor: Any?
-
     private var magnificationItems: [MagnificationItem] = []
     private var magnificationStackSize: NSSize?
     private var magnificationVisibleFrame: NSRect?
@@ -1780,9 +1665,6 @@ final class DockPanel: NSPanel {
             stack.translatesAutoresizingMaskIntoConstraints = true
             stack.autoresizingMask = [.width, .height]
             stack.frame = effect.glassContent.bounds
-            // 滚动需要把溢出玻璃的图标裁掉；静止几何对称，裁剪不影响未溢出的场景。
-            effect.glassContent.clipsToBounds = true
-            applyScrollOffset()
             let radius = 3 * CGFloat(prefs.iconSize)
             let extra = CGFloat(prefs.iconSize * (prefs.hoverScale - 1))
                 / (2 * sin(.pi * CGFloat(prefs.iconSize) / (4 * radius)))
@@ -1927,9 +1809,8 @@ final class DockPanel: NSPanel {
             var origin = placedOrigin(forSize: size, on: screen)
             let oldMin = magnificationItems.map { vertical ? $0.frame.minY : $0.frame.minX }.min() ?? 0
             let newMin = intervals.map(\.0).min() ?? oldMin
-            // 滚动偏移并入 origin：整行一起平移，指针到图标的映射仍成立。
-            if vertical { origin.y = magnificationRestFrame.minY + newMin - oldMin - scrollOffset }
-            else { origin.x = magnificationRestFrame.minX + newMin - oldMin - scrollOffset }
+            if vertical { origin.y = magnificationRestFrame.minY + newMin - oldMin }
+            else { origin.x = magnificationRestFrame.minX + newMin - oldMin }
             // 窗口服务会对齐物理像素；先统一量化，避免浮点尾差反复请求相同尺寸。
             let pixels = backingScaleFactor
             let targetFrame = NSRect(x: (origin.x * pixels).rounded() / pixels,
@@ -1971,20 +1852,7 @@ final class DockPanel: NSPanel {
         magnificationProgress = 0
         magnificationTarget = 0
         applyMagnification()
-        var restingFrame = magnificationVisibleFrame ?? magnificationRestFrame
-        // 条目变多后窗口被钳制到屏幕内：恢复静止几何时必须按当前上限收敛，
-        // 否则会把放大前记录的旧宽度还原回来，程序坞再次伸出屏幕。
-        if let screen = boundScreen {
-            let prefs = Preferences.shared
-            let limit = (prefs.barPosition.isVertical
-                ? screen.visibleFrame.height : screen.visibleFrame.width)
-                * DockLengthFit.maximumScreenFraction
-            if prefs.barPosition.isVertical {
-                restingFrame.size.height = min(restingFrame.height, limit)
-            } else {
-                restingFrame.size.width = min(restingFrame.width, limit)
-            }
-        }
+        let restingFrame = magnificationVisibleFrame ?? magnificationRestFrame
         magnificationVisibleFrame = nil
         magnificationReservedFrame = nil
         effectAlong?.constant = -2 * opticalInset
@@ -2134,7 +2002,6 @@ final class DockPanel: NSPanel {
     static let revealThreshold: CGFloat = 3
 
     deinit {
-        if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
         if let badgeObserver { NotificationCenter.default.removeObserver(badgeObserver) }
         if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
         magnificationDisplayLink?.invalidate()
