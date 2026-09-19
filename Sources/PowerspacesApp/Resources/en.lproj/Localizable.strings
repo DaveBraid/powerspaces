@@ -207,7 +207,7 @@
 "How thick the bar is, in points. The smallest setting hugs the icons exactly; larger values add padding around them." = "How thick the bar is, in points. The smallest setting hugs the icons exactly; larger values add padding around them.";
 "How to make a new window for apps that don't have their own rule." = "How to make a new window for apps that don't have their own rule.";
 "How to make a new window for apps that don't have their own rule. Set a per-app rule from an icon's right-click menu → “When open elsewhere”. Saved to ~/.config/powerspaces/config.json." = "How to make a new window for apps that don't have their own rule. Set a per-app rule from an icon's right-click menu → “When open elsewhere”. Saved to ~/.config/powerspaces/config.json.";
-"How wide each labeled window item is, in points." = "How wide each labeled window item is, in points.";
+"How wide each labeled window item is, in points." = "Maximum width of labeled items, in points. Short titles shrink to fit.";
 "Icon animation" = "Icon animation";
 "Icon color" = "Icon color";
 "Icon size" = "Icon size";
@@ -502,11 +502,11 @@
 "Whether AltTab is installed. Powerspaces uses it for the per-desktop ⌘-Tab switcher; it's a free, open-source app you install separately." = "Whether AltTab is installed. Powerspaces uses it for the per-desktop ⌘-Tab switcher; it's a free, open-source app you install separately.";
 "Whether macOS currently lets Powerspaces control windows. Needed to close or minimize windows and read window titles." = "Whether macOS currently lets Powerspaces control windows. Needed to close or minimize windows and read window titles.";
 "Whether the powerspaces binary the extension calls is installed. “Install CLI” puts it in ~/.local/bin with no admin needed." = "Whether the powerspaces binary the extension calls is installed. “Install CLI” puts it in ~/.local/bin with no admin needed.";
-"Whether ⌘-hidden apps and running apps with no open window still appear in the dock. Both on by default, matching macOS's own Dock." = "Whether ⌘-hidden apps and running apps with no open window still appear in the dock. Both on by default, matching macOS's own Dock.";
+"Whether ⌘-hidden apps and running apps with no open window still appear in the dock. Both on by default, matching macOS's own Dock." = "Hidden apps follow this setting. Windowless running apps stay on their last known desktop.";
 "Which modifier forces a brand-new window on click." = "Which modifier forces a brand-new window on click.";
 "Which screen edge the bar sits on." = "Which screen edge the bar sits on.";
 "Wide (240)" = "Wide (240)";
-"Window item width" = "Window item width";
+"Window item width" = "Maximum window item width";
 "Windows" = "Windows";
 "With no menu-bar icon you can't open Preferences from the menu bar. To get back here, right-click anywhere on the Powerspaces dock and choose “Open Preferences”." = "With no menu-bar icon you can't open Preferences from the menu bar. To get back here, right-click anywhere on the Powerspaces dock and choose “Open Preferences”.";
 "add remove poof slide fade" = "add remove poof slide fade";
@@ -596,7 +596,11 @@
 "Automatic title color" = "Automatic title color";
 "Follow System uses the native glass appearance. With no custom tint, Tint Strength has no color to adjust; choose Light, Dark, or enable tinting." = "Follow System uses the native glass appearance. With no custom tint, Tint Strength has no color to adjust; choose Light, Dark, or enable tinting.";
 
-"Edge highlight strength" = "Edge highlight strength";
-"Edge highlight width" = "Edge highlight width";
-"Adjust both edges together. 0% turns highlights off; 100% is the default." = "Adjust both edges together. 0% turns highlights off; 100% is the default.";
-"Width relative to the default highlight. Independent of glass transparency." = "Width relative to the default highlight. Independent of glass transparency.";
+"Native (1.5×)" = "Native (1.5×)";
+"Running dot gap" = "Running dot gap";
+"Show pinned-app divider" = "Show pinned-app divider";
+"Divider side spacing" = "Divider side spacing";
+
+"Divider length" = "Divider length";
+
+"Divider thickness" = "Divider thickness";

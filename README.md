@@ -6,7 +6,7 @@
 
 **This fork:** macOS 27, English / 简体中文, and native Liquid Glass. [中文 README](README.zh-CN.md) · [Build and installation guide (中文)](docs/zh-CN.md).
 
-Dock glass transparency is adjustable independently of tint strength. On macOS 27, PS reduces the native glass filter's blur and face fill without fading icons, and strengthens its native edge highlights. At 0%, background blur and fill return to system values; edge enhancement remains. Automatic window-title colors adapt to the background under each title, with manual colors still available in Settings → Windows.
+Dock glass transparency is adjustable independently of tint strength. On macOS 27, PS reduces the native glass filter's blur and face fill without fading icons, and preserves its native edge highlights. At 0%, background blur and fill return to system values; native highlights remain unchanged. Automatic window-title colors switch each complete title between black and white according to its average background luminance, with manual colors still available in Settings → Windows.
 
 These enhancements use isolated, capability-checked **private macOS 27 rendering APIs**. Unsupported versions fall back to native glass and semantic text colors; system Reduce Transparency takes priority. OS updates may require adaptation. No screen capture, background sampling timer, or global system appearance changes are used. Settings-window glass follows the system.
 
@@ -244,6 +244,19 @@ Licensed under the [GNU General Public License v3.0](LICENSE): free to use, stud
 share, and modify. Any distributed work that builds on Powerspaces must stay under
 the same GPL-3.0 license and make its source available.
 
-Edge highlights can be adjusted live in Settings → Dock → Layout: strength 0–200% (0 disables it), width 0.25–3×. Defaults remain 100% and 1×; both edges change together, independently of transparency.
 
-**Known highlight limitation:** the current sliders modify background-filter highlights. AppKit suppresses the separate foreground highlight when the window becomes inactive, so these sliders currently cannot reproduce the native Dock rim in PS’s nonactivating panel. The activation-state cause has been reproduced; its rendering fix is pending.
+**Native Dock recipe:** on the verified Apple Silicon macOS 27.0 build `26A428`, the background uses DesignLibrary’s `.dock` material. A rendering-only `windowAppearsActive` environment keeps its separate highlights visible while PS remains inactive and its panel never takes focus. Native highlights remain unmodified, with no custom highlight layers or sliders; transparency still adjusts only background blur and fill. Missing symbols, changed type layouts, an unverified OS build, or failed rendering validation fall back to `NSGlassEffectView`. Settings continue to use public native glass. This reproduces the Dock material, without claiming every private animation and tuning value of the system Dock.
+
+### Dock grouping and magnification
+
+Running apps have a small dot; non-running pinned shortcuts remain dimmed. All visible pins (global and per-desktop) share the leading section, followed by a separator and this desktop's unpinned running apps. Saved ordering and dragging apply within each section. The App Launcher stays with the pinned section.
+
+Windowless regular apps remain on their last observed desktop/display during the PS session. An app first observed without windows is assigned to the active desktop; macOS provides no Space membership for a windowless process. Restarting PS resets this inferred ownership. Apps with windows only on other desktops are not added to the running section. Pinned apps show global process status, regardless of which desktop holds their windows.
+
+Hover magnification now expands nearby icons continuously and makes room for them; the existing hover scale controls the maximum size (1.5× by default; saved values are preserved). Reduce Motion disables magnification. Title layout reserves explicit icon/text regions and shrinks short titles to their measured width, with the configured title width as a maximum. Very long window titles truncate with the full title available in the tooltip.
+
+In Icons settings, running-dot spacing is adjustable from 0–20 points (default 5). Dots keep their screen-edge coordinate during magnification and track the icon center along the dock. The pinned-app divider switches as a whole between black and white, stays centered across the glass, has adjustable length (20–100% of icon size, default 65%), can be disabled, and has independent extra spacing on each side (0–24 points, default 8).
+
+Divider thickness is adjustable in Settings → Icons from 0.5–4 pt (default 1 pt), independently of length and spacing.
+
+Enable **Advanced** in Settings to reveal glass transparency/tint strength and divider thickness/length/side spacing. Hiding these controls preserves their saved values.

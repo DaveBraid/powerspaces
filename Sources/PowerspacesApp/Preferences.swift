@@ -53,7 +53,7 @@ final class Preferences: ObservableObject {
     // MARK: Numeric specs (presets + slider bounds), shared with the UI
 
     static let hoverScaleSpec = NumericSpec(
-        presets: [("Off (1.0×)", 1.0), ("Subtle (1.1×)", 1.10), ("Default (1.18×)", 1.18), ("Big (1.3×)", 1.30)],
+        presets: [("Off (1.0×)", 1.0), ("Subtle (1.1×)", 1.10), ("Default (1.18×)", 1.18), ("Big (1.3×)", 1.30), ("Native (1.5×)", 1.50)],
         range: 1.0...2.0, step: 0.01, format: { String(format: "%.2f×", $0) })
     static let hoverHighlightSpec = NumericSpec(
         presets: [("None", 0.0), ("Default (16%)", 0.16), ("Stronger (28%)", 0.28)],
@@ -128,6 +128,11 @@ final class Preferences: ObservableObject {
     private enum K {
         static let language = "language" // 仅保存 en / zh-Hans，不依赖翻译后的显示名称。
         static let hoverEnabled = "hoverEnabled"
+        static let runningDotGap = "runningDotGap"
+        static let dockDividerEnabled = "dockDividerEnabled"
+        static let dockDividerThickness = "dockDividerThickness"
+        static let dockDividerLength = "dockDividerLength"
+        static let dockDividerGap = "dockDividerGap"
         // These numeric settings used to be stored as enum *strings* (e.g.
         // "medium"). They're now Doubles, so they use fresh "…Number" keys —
         // otherwise `double(forKey:)` reads the old string as 0 and shadows the
@@ -169,8 +174,6 @@ final class Preferences: ObservableObject {
         static let dockBackground = "dockBackground"
         static let dockOpacity = "dockOpacity"
         static let glassTransparency = "glassTransparency"
-        static let glassHighlightStrength = "glassHighlightStrength"
-        static let glassHighlightWidth = "glassHighlightWidth"
         static let automaticTitleColor = "automaticTitleColor"
         static let warningsEnabled = "warningsEnabled"
         static let warningMode = "warningMode"
@@ -236,7 +239,12 @@ final class Preferences: ObservableObject {
             // each one's `…Custom` flag is registered true too, which shows the slider
             // at that exact value instead of an empty "Custom…" dropdown.
             K.hoverEnabled: true,
-            K.hoverScale: Preferences.hoverScaleSpec.presetValue("Subtle (1.1×)"),
+            K.runningDotGap: 5.0, // 图标边框到圆点的留白，单位点，范围 0…20。
+            K.dockDividerEnabled: true,
+            K.dockDividerThickness: 1.0, // 实际绘制粗细，单位点，范围 0.5–4，默认 1。
+            K.dockDividerLength: 0.65, // 长度为基础图标尺寸的 20–100%，默认 65%。
+            K.dockDividerGap: 8.0, // 分割线每一侧的额外留白，单位点，范围 0…24。
+            K.hoverScale: Preferences.hoverScaleSpec.presetValue("Native (1.5×)"),
             K.hoverHighlight: Preferences.hoverHighlightSpec.presetValue("Default (16%)"),
             K.hoverAnimation: Preferences.hoverAnimationSpec.presetValue("Default (0.12s)"),
             K.iconSize: 39,
@@ -267,8 +275,6 @@ final class Preferences: ObservableObject {
             K.dockScreensMode: DockScreensMode.allScreens.rawValue,
             K.barMaterial: BarMaterial.hud.rawValue,
             K.automaticTitleColor: true, // 标题默认使用系统语义色，跟随玻璃明暗。
-            K.glassHighlightStrength: 1.0, // 0–2 强度，默认保留当前高光；0 关闭。
-            K.glassHighlightWidth: 1.0, // 0.25–3 原生高光宽度参数，默认 1。
             K.glassTransparency: 0.65, // 0–1 背景透光增强；默认减弱 65% 模糊和底色。
             K.dockOpacity: 1.0, // 背景强度 0…1；不影响图标，默认保持原生玻璃强度。
             K.warningsEnabled: true,
@@ -350,6 +356,27 @@ final class Preferences: ObservableObject {
 
     // MARK: Numeric properties (value + "custom slider showing" flag)
 
+    var runningDotGap: Double {
+        get { min(20, max(0, dbl(K.runningDotGap))) }
+        set { setDbl(min(20, max(0, newValue)), K.runningDotGap) }
+    }
+    var dockDividerEnabled: Bool {
+        get { bln(K.dockDividerEnabled) }
+        set { setBln(newValue, K.dockDividerEnabled) }
+    }
+    var dockDividerThickness: Double {
+        get { min(4, max(0.5, dbl(K.dockDividerThickness))) }
+        set { setDbl(min(4, max(0.5, newValue)), K.dockDividerThickness) }
+    }
+    var dockDividerLength: Double {
+        get { min(1, max(0.2, dbl(K.dockDividerLength))) }
+        set { setDbl(min(1, max(0.2, newValue)), K.dockDividerLength) }
+    }
+    var dockDividerGap: Double {
+        get { min(24, max(0, dbl(K.dockDividerGap))) }
+        set { setDbl(min(24, max(0, newValue)), K.dockDividerGap) }
+    }
+
     var hoverScale: Double { get { dbl(K.hoverScale) } set { setDbl(newValue, K.hoverScale) } }
     var hoverScaleCustom: Bool { get { bln(K.custom(K.hoverScale)) } set { setBln(newValue, K.custom(K.hoverScale)) } }
     var hoverHighlight: Double { get { dbl(K.hoverHighlight) } set { setDbl(newValue, K.hoverHighlight) } }
@@ -424,14 +451,7 @@ final class Preferences: ObservableObject {
             barMaterial = BarMaterial(rawValue: newValue.rawValue) ?? .hud
         }
     }
-    var glassHighlightStrength: Double {
-        get { min(2, max(0, dbl(K.glassHighlightStrength))) }
-        set { setDbl(min(2, max(0, newValue)), K.glassHighlightStrength) }
-    }
-    var glassHighlightWidth: Double {
-        get { min(3, max(0.25, dbl(K.glassHighlightWidth))) }
-        set { setDbl(min(3, max(0.25, newValue)), K.glassHighlightWidth) }
-    }
+
     var glassTransparency: Double {
         get { min(1, max(0, dbl(K.glassTransparency))) }
         set { setDbl(min(1, max(0, newValue)), K.glassTransparency) }

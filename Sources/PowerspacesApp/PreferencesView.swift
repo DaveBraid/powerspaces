@@ -206,8 +206,6 @@ struct PreferencesView: View {
          .init(name: "Background material", tab: 0, keywords: "vibrancy translucency hud liquid glass solid"),
         .init(name: "Background appearance", tab: 0, keywords: "light dark tone"),
         .init(name: "Dock background opacity", tab: 0, keywords: "transparency alpha glass"),
-        .init(name: "Edge highlight strength", tab: 0, keywords: "glass edge light highlight"),
-        .init(name: "Edge highlight width", tab: 0, keywords: "glass edge light highlight"),
         .init(name: "Glass transparency", tab: 0, keywords: "transparency clear glass background"),
         .init(name: "Glass tint strength", tab: 0, keywords: "transparency tint clear glass"),
         .init(name: "Dock height", tab: 0, keywords: "thickness size"),
@@ -222,12 +220,16 @@ struct PreferencesView: View {
         .init(name: "Icon size", tab: 1, keywords: "big small"),
         .init(name: "Icon spacing", tab: 1, keywords: "gap"),
         .init(name: "Running indicator", tab: 1, keywords: "dim box outline running"),
+        .init(name: "Running dot gap", tab: 1, keywords: "dot spacing"),
+        .init(name: "Show pinned-app divider", tab: 1, keywords: "separator pinned"),
+        .init(name: "Divider thickness", tab: 1, keywords: "separator width stroke"),
+        .init(name: "Divider length", tab: 1, keywords: "separator size"),
+        .init(name: "Divider side spacing", tab: 1, keywords: "separator gap"),
         .init(name: "Hover effect", tab: 2, keywords: "magnify highlight"),
         .init(name: "Icon animation", tab: 2, keywords: "add remove poof slide fade"),
         .init(name: "Show an icon per window", tab: 3, keywords: "windows multiple"),
         .init(name: "Show window titles", tab: 3, keywords: "label taskbar title"),
         .init(name: "Show hidden apps", tab: 3, keywords: "hidden"),
-        .init(name: "Show apps with no windows", tab: 3, keywords: "windowless running"),
         .init(name: "App Launcher", tab: 3, keywords: "launchpad grid apps"),
         .init(name: "Open App Launcher shortcut", tab: 4, keywords: "hotkey keyboard"),
         .init(name: "Middle-click action", tab: 4, keywords: "click mouse"),
@@ -297,42 +299,25 @@ struct PreferencesView: View {
                            bind(\.dockBackground)) { $0.label }
                 enumPicker(L10n.string("Background appearance"), help: L10n.string("Appearance is independent of the custom tint color."),
                            bind(\.glassTone)) { $0.label }
-                opacityRow(prefs.dockBackground == .glass ? "Glass tint strength" : "Dock background opacity",
-                           value: bind(\.dockOpacity))
-                    .disabled(prefs.dockBackground == .glass && prefs.glassTone == .automatic
-                              && !prefs.dockTintEnabled && !prefs.hasDockTintOverrides)
-                    .help(L10n.string(prefs.dockBackground == .glass
-                        ? "Tint strength preserves glass highlights. Select Light, Dark, or a custom color to adjust it."
-                        : "Only the background fades. At 100%, glass retains its native translucency. Reduce Transparency overrides this setting."))
-                if prefs.dockBackground == .glass && prefs.glassTone == .automatic
-                    && !prefs.dockTintEnabled && !prefs.hasDockTintOverrides {
-                    Text(L10n.string("Follow System uses the native glass appearance. With no custom tint, Tint Strength has no color to adjust; choose Light, Dark, or enable tinting."))
-                        .font(.caption).foregroundStyle(.secondary)
+                if advanced || prefs.dockBackground != .glass {
+                    opacityRow(prefs.dockBackground == .glass ? "Glass tint strength" : "Dock background opacity",
+                               value: bind(\.dockOpacity))
+                        .disabled(prefs.dockBackground == .glass && prefs.glassTone == .automatic
+                                  && !prefs.dockTintEnabled && !prefs.hasDockTintOverrides)
+                        .help(L10n.string(prefs.dockBackground == .glass
+                            ? "Tint strength preserves glass highlights. Select Light, Dark, or a custom color to adjust it."
+                            : "Only the background fades. At 100%, glass retains its native translucency. Reduce Transparency overrides this setting."))
+                    if prefs.dockBackground == .glass && prefs.glassTone == .automatic
+                        && !prefs.dockTintEnabled && !prefs.hasDockTintOverrides {
+                        Text(L10n.string("Follow System uses the native glass appearance. With no custom tint, Tint Strength has no color to adjust; choose Light, Dark, or enable tinting."))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
-                if prefs.dockBackground == .glass {
+                if advanced && prefs.dockBackground == .glass {
                     if #available(macOS 27.0, *), ProcessInfo.processInfo.operatingSystemVersion.majorVersion == 27 {
                         opacityRow("Glass transparency", value: bind(\.glassTransparency))
                             .help(L10n.string("Higher values reduce background blur and fill, preserving icons and edge highlights. 0% restores the system material."))
-                        HStack {
-                            Text(L10n.string("Edge highlight strength"))
-                            Spacer()
-                            Slider(value: bind(\.glassHighlightStrength), in: 0...2, step: 0.05)
-                                .frame(maxWidth: 240)
-                                .accessibilityLabel(L10n.string("Edge highlight strength"))
-                            Text("\(Int((prefs.glassHighlightStrength * 100).rounded()))%")
-                                .monospacedDigit().frame(width: 48, alignment: .trailing)
-                        }
-                        .help(L10n.string("Adjust both edges together. 0% turns highlights off; 100% is the default."))
-                        HStack {
-                            Text(L10n.string("Edge highlight width"))
-                            Spacer()
-                            Slider(value: bind(\.glassHighlightWidth), in: 0.25...3, step: 0.05)
-                                .frame(maxWidth: 240)
-                                .accessibilityLabel(L10n.string("Edge highlight width"))
-                            Text(String(format: "%.2f×", prefs.glassHighlightWidth))
-                                .monospacedDigit().frame(width: 48, alignment: .trailing)
-                        }
-                        .help(L10n.string("Width relative to the default highlight. Independent of glass transparency."))
+
                     }
                 }
                 NumericRow(title: L10n.string("Dock height"),
@@ -505,6 +490,29 @@ struct PreferencesView: View {
                            value: bind(\.iconSpacing), isCustom: bind(\.iconSpacingCustom))
             }
             Section {
+                HStack {
+                    Text(L10n.string("Running dot gap"))
+                    Slider(value: bind(\.runningDotGap), in: 0...20, step: 1)
+                    Text("\(Int(prefs.runningDotGap)) pt").monospacedDigit()
+                }
+                Toggle(L10n.string("Show pinned-app divider"), isOn: bind(\.dockDividerEnabled))
+                if advanced && prefs.dockDividerEnabled {
+                    HStack {
+                        Text(L10n.string("Divider thickness"))
+                        Slider(value: bind(\.dockDividerThickness), in: 0.5...4, step: 0.5)
+                        Text(String(format: "%.1f pt", prefs.dockDividerThickness)).monospacedDigit()
+                    }
+                    HStack {
+                        Text(L10n.string("Divider length"))
+                        Slider(value: bind(\.dockDividerLength), in: 0.2...1, step: 0.05)
+                        Text("\(Int((prefs.dockDividerLength * 100).rounded()))%") .monospacedDigit()
+                    }
+                    HStack {
+                        Text(L10n.string("Divider side spacing"))
+                        Slider(value: bind(\.dockDividerGap), in: 0...24, step: 1)
+                        Text("\(Int(prefs.dockDividerGap)) pt").monospacedDigit()
+                    }
+                }
                 enumPicker(L10n.string("Running indicator"),
                            help: L10n.string(
                                "How running apps are told apart from pinned-but-not-running "
@@ -657,13 +665,6 @@ struct PreferencesView: View {
                         "Keep an app in the dock after you ⌘-hide it (its windows go off-screen), "
                         + "like its tile in macOS's Dock, so you can click it back. Off drops hidden "
                         + "apps from the dock until you unhide them."))
-                Toggle(L10n.string("Show apps with no open windows"), isOn: bind(\.showWindowlessApps))
-                    .help(L10n.string(
-                        "Keep a running app in the dock even when it has no open window, like macOS's"
-                        + " Dock keeps its icon after you close its last window, soa click reopens a "
-                        + "window. Off hides such apps until they have a window. These show on every "
-                        + "desktop (nothing ties them to one); only regular apps qualify, never "
-                        + "background helpers."))
             } header: {
                 Text(L10n.string("Hidden & window-less apps"))
             } footer: {

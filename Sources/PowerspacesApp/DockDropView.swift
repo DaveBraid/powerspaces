@@ -24,6 +24,22 @@ final class DockDropView: NSView {
     /// True only while a drag we actually accept (an .app bundle) is overhead, so
     /// stray file drags neither open a slot nor trigger the close-on-exit.
     private var accepting = false
+    var onPointerMoved: ((NSPoint?) -> Void)?
+    private var pointerTracking: NSTrackingArea?
+
+    /// 由鼠标事件驱动整条程序坞缩放，无计时器；离开时恢复尺寸。
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let pointerTracking { removeTrackingArea(pointerTracking) }
+        let area = NSTrackingArea(rect: .zero,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self, userInfo: nil)
+        addTrackingArea(area)
+        pointerTracking = area
+    }
+    override func mouseMoved(with event: NSEvent) { onPointerMoved?(event.locationInWindow) }
+    override func mouseEntered(with event: NSEvent) { onPointerMoved?(event.locationInWindow) }
+    override func mouseExited(with event: NSEvent) { onPointerMoved?(nil) }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)

@@ -768,6 +768,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// flipped preference takes effect), then fills each from its display's visible
     /// Space. Returns whether any dock's display list changed, so the poll can
     /// decide whether to back off.
+    private var windowlessOwnership = WindowlessOwnership()
+
     @discardableResult
     private func refresh() -> Bool {
         guard let snapshot = try? provider.snapshot() else { return false }
@@ -785,12 +787,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         reconcileDocks(displays: displays)
 
         let prefs = Preferences.shared
-        // "Show apps with no open windows": running, regular (Dock-showing) apps
-        // with no window anywhere in this snapshot — computed from the *full*
-        // snapshot (so a ⌘-hidden app, which still has windows, isn't mistaken for
-        // window-less) and shown on every desktop's dock since they have no window
-        // tying them to one. Off → empty, so nothing extra is injected.
-        let windowlessApps = prefs.showWindowlessApps ? Self.windowlessApps(pidsWithWindows: pidsWithWindows) : []
+        let regularApps = NSWorkspace.shared.runningApplications.filter(Self.isReapableRegularApp)
+        let runningPIDs = Dictionary(regularApps.compactMap { app in
+            app.bundleIdentifier.map { ($0, app.processIdentifier) }
+        }, uniquingKeysWith: { first, _ in first })
+        let fallbackScope = displays.first(where: { $0.isActive }).map {
+            "\($0.displayUUID)/\($0.currentSpaceID)"
+        } ?? ""
+        var scopesByPID: [pid_t: Set<String>] = [:]
+        for info in displays {
+            let scope = "\(info.displayUUID)/\(info.currentSpaceID)"
+            for app in DockModel.apps(onDisplay: info.bounds, snapshot: snapshot,
+                                      visibleSpace: info.currentSpaceID) {
+                if let pid = app.pid { scopesByPID[pid, default: []].insert(scope) }
+            }
+        }
+        windowlessOwnership.update(livePIDs: Set(regularApps.map(\.processIdentifier)),
+                                   pidsWithWindows: pidsWithWindows,
+                                   visibleScopes: scopesByPID, fallbackScope: fallbackScope)
+        let windowlessApps = Self.windowlessApps(pidsWithWindows: pidsWithWindows)
         // "Show hidden windows": when off, drop ⌘-hidden apps' windows before
         // building the docks, so a hidden app disappears until it's unhidden.
         let displaySnapshot = prefs.showHiddenWindows ? snapshot : snapshot.droppingHiddenWindows()
@@ -852,10 +867,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 excludedHere: spaceUUID.map { pins.everywhereExceptions(onSpace: $0) } ?? [],
                 order: spaceUUID.map { pins.order(onSpace: $0) } ?? [],
                 includeLauncher: prefs.appLauncherEnabled,
-                windowlessApps: windowlessApps,
+                windowlessApps: windowlessApps.filter {
+                    guard let pid = $0.pid else { return false }
+                    return windowlessOwnership.contains(pid, scope: "\(uuid)/\(info.currentSpaceID)")
+                },
                 options: options,
                 nameForBundleID: AppDelegate.appName(for:),
-                titleForWindow: titleReader.title(windowID:pid:))
+                titleForWindow: titleReader.title(windowID:pid:)).map { app in
+                    app.isPinned ? app.withRunningPID(app.pid ?? app.bundleID.flatMap { runningPIDs[$0] }) : app
+                }
             // Flag the bar standing for the forefront window (matched by the same
             // window id the title attach uses) so the panel can bold it. nil id —
             // labels off, or no main window — leaves every item unflagged.

@@ -8,6 +8,10 @@ import AppKit
 @MainActor
 final class GlassSurfaceView: NSView {
     private let surface: NSView
+    private var nativeDockSurface: NativeDockMaterialView?
+    private var nativeDockFailed = false
+    var allowsNativeDockMaterial = true { didSet { refresh() } } // 开发验证可强制公开材质回退。
+    var usesNativeDockMaterial: Bool { nativeDockSurface?.isHidden == false }
     let glassContent = NSView()
     var dockMode = false { didSet { refresh() } }
     var settingsMode = false { didSet { refresh() } }
@@ -16,9 +20,6 @@ final class GlassSurfaceView: NSView {
     var cornerRadius: CGFloat = 16 { didSet { refresh() } } // 与程序坞现有圆角保持一致。
     var solid = false { didSet { refresh() } }
     var opacity: CGFloat = 1 { didSet { refresh() } }
-    var highlightStrength: Double = 1 { didSet { refresh() } }
-    var highlightWidth: Double = 1 { didSet { refresh() } }
-    var enhancesEdges = true { didSet { refresh() } }
     var backgroundTransparency: Double = 0 { didSet { refresh() } }
     var tintColor: NSColor? { didSet { refresh() } }
 
@@ -39,6 +40,7 @@ final class GlassSurfaceView: NSView {
         clipsToBounds = false
         surface.clipsToBounds = false
         glassContent.clipsToBounds = false
+        glassContent.autoresizingMask = [.width, .height]
         surface.frame = bounds
         surface.autoresizingMask = [.width, .height]
         addSubview(surface)
@@ -55,6 +57,14 @@ final class GlassSurfaceView: NSView {
         refresh()
     }
 
+    /// 窗口动态扩容时同步原生前景尺寸，避免内容容器停在旧宽度而裁掉标题与图标。
+    override func layout() {
+        super.layout()
+        surface.frame = bounds
+        nativeDockSurface?.frame = bounds
+        if hostsContent { glassContent.frame = bounds }
+    }
+
     /// 旧系统的染色位于材质之上、前景之下，降低透明度也不能遮住图标。
     func installTintOverlay(_ overlay: NSView) {
         addSubview(overlay, positioned: .above, relativeTo: surface)
@@ -66,15 +76,27 @@ final class GlassSurfaceView: NSView {
     @objc private func refresh() {
         layer?.cornerRadius = cornerRadius
         let opaque = SystemDisplay.reduceTransparency || solid
+        if dockMode, allowsNativeDockMaterial, !nativeDockFailed, nativeDockSurface == nil,
+           let recipe = NativeDockRecipe.shared {
+            let native = NativeDockMaterialView(recipe: recipe)
+            native.frame = bounds
+            native.autoresizingMask = [.width, .height]
+            native.onFailure = { [weak self] in self?.fallBackToPublicGlass() }
+            addSubview(native, positioned: .above, relativeTo: surface)
+            nativeDockSurface = native
+        }
+        let nativeEnabled = dockMode && allowsNativeDockMaterial && nativeDockSurface != nil && !opaque
+        nativeDockSurface?.isHidden = !nativeEnabled
         // Dock 的光学层保持完整，浓度只调染色；不能把前景和高光一起淡出。
         alphaValue = hostsContent || SystemDisplay.reduceTransparency ? 1 : opacity
         if hostsContent {
-            if opaque {
+            if opaque || nativeEnabled {
                 if glassContent.superview !== self {
                     if #available(macOS 26.0, *), let glass = surface as? NSGlassEffectView {
                         glass.contentView = nil
                     }
                     glassContent.removeFromSuperview()
+                    glassContent.translatesAutoresizingMaskIntoConstraints = true // 脱离原生 contentView 后恢复手动尺寸管理。
                     glassContent.frame = bounds
                     glassContent.autoresizingMask = [.width, .height]
                     addSubview(glassContent)
@@ -87,14 +109,19 @@ final class GlassSurfaceView: NSView {
         }
         let toneColor: NSColor = material == .menu ? .black
             : material == .popover ? .white : .windowBackgroundColor
-        surface.isHidden = opaque
+        surface.isHidden = opaque || nativeEnabled
+        if nativeEnabled {
+            let neutral: NSColor? = material == .menu ? .black : material == .popover ? .white : nil
+            nativeDockSurface?.update(radius: cornerRadius,
+                tint: tintColor.map { $0.withAlphaComponent(opacity) } ?? neutral?.withAlphaComponent(0.18 * opacity),
+                appearance: material == .menu ? NSAppearance(named: .darkAqua)
+                    : material == .popover ? NSAppearance(named: .aqua) : nil,
+                transparency: backgroundTransparency)
+        }
         layer?.backgroundColor = opaque
             ? (tintColor ?? toneColor).withAlphaComponent(SystemDisplay.reduceTransparency ? 1 : opacity).cgColor : nil
         if #available(macOS 26.0, *), let glass = surface as? NSGlassEffectView {
             if let tunable = glass as? TunableGlassEffectView {
-                tunable.highlightStrength = highlightStrength
-                tunable.highlightWidth = highlightWidth
-                tunable.enhancesEdges = dockMode && !opaque && enhancesEdges
                 tunable.backgroundTransparency = dockMode && !opaque ? backgroundTransparency : 0
             }
             glass.cornerRadius = cornerRadius
@@ -120,6 +147,15 @@ final class GlassSurfaceView: NSView {
             blur.layer?.cornerRadius = cornerRadius
             blur.layer?.masksToBounds = true
         }
+    }
+
+    /// 渲染探测失败后本视图不再重试私有材质，前景返回现有公开玻璃层。
+    private func fallBackToPublicGlass() {
+        nativeDockFailed = true
+        nativeDockSurface?.removeFromSuperview()
+        nativeDockSurface = nil
+        refresh()
+        needsLayout = true
     }
 
     override func viewDidChangeEffectiveAppearance() {

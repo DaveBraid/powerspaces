@@ -21,6 +21,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "SpaceKit", swiftSettings: concurrencyWarnings),
+        .target(name: "CDockMaterial"),
         // The "faster desktop switch" engine: a small C target that posts a
         // synthetic, no-animation Dock-swipe via private CGEvent fields (kept in C
         // because casting arbitrary field numbers to CGEventField is trivial there).
@@ -28,7 +29,7 @@ let package = Package(
         .target(name: "CSpaceSwitch",
                 linkerSettings: [.linkedFramework("ApplicationServices")]),
         .executableTarget(name: "powerspaces", dependencies: ["SpaceKit"], swiftSettings: concurrencyWarnings),
-        .executableTarget(name: "PowerspacesApp", dependencies: ["SpaceKit", "CSpaceSwitch"],
+        .executableTarget(name: "PowerspacesApp", dependencies: ["SpaceKit", "CSpaceSwitch", "CDockMaterial"],
                           resources: [.process("Resources")], swiftSettings: concurrencyWarnings),
         .executableTarget(name: "SpaceKitTestRunner", dependencies: ["SpaceKit"], swiftSettings: concurrencyWarnings),
     ],

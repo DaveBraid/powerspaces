@@ -154,8 +154,6 @@ final class DockPanel: NSPanel {
         let prefs = Preferences.shared
         effect.dockMode = true
         effect.backgroundTransparency = prefs.glassTransparency
-        effect.highlightStrength = prefs.glassHighlightStrength
-        effect.highlightWidth = prefs.glassHighlightWidth
         effect.material = prefs.barMaterial.material
         effect.solid = prefs.dockBackground == .solid
         if #available(macOS 26.0, *) { hasShadow = effect.solid } // 玻璃使用自身阴影，避免双重黑边。
@@ -198,6 +196,8 @@ final class DockPanel: NSPanel {
         // into the spare room `panelSize` leaves on the inner side — never outward
         // past the screen edge onto a vertically-stacked neighbouring display. The
         // stack's own constraints are (re)built per orientation in `applyBarFrame`.
+        acceptsMouseMovedEvents = true
+        container.onPointerMoved = { [weak self] point in self?.magnify(at: point) }
         contentView = container
         applyOrientation() // needs `effect` in the container (frames the bar + stack)
         applyDockTint()
@@ -216,8 +216,6 @@ final class DockPanel: NSPanel {
         let prefs = Preferences.shared
         effect.dockMode = true
         effect.backgroundTransparency = prefs.glassTransparency
-        effect.highlightStrength = prefs.glassHighlightStrength
-        effect.highlightWidth = prefs.glassHighlightWidth
         effect.material = prefs.barMaterial.material
         effect.solid = prefs.dockBackground == .solid
         if #available(macOS 26.0, *) { hasShadow = effect.solid } // 玻璃使用自身阴影，避免双重黑边。
@@ -296,22 +294,49 @@ final class DockPanel: NSPanel {
         // hugs the screen edge — rather than on the taller window. A hovered icon
         // still magnifies inward via `DockButton.edgeAnchoredScale`, so it never
         // grows past the screen edge.
-        stack.alignment = vertical ? .centerX : .centerY
+        // 放大时所有图标沿屏幕外侧对齐，运行圆点保持同一条基线。
+        switch Preferences.shared.barPosition {
+        case .bottom: stack.alignment = .bottom
+        case .top: stack.alignment = .top
+        case .left: stack.alignment = .leading
+        case .right: stack.alignment = .trailing
+        }
         applyBarFrame()
     }
 
     /// The stack's size across the bar: the icon height for a horizontal bar, or
     /// the widest item (a labeled pill can be wider than an icon) for a vertical
     /// one. This is the smallest the bar can be without clipping its contents.
+    /// 直接汇总项目约束尺寸，避免已绑定窗口的 stack.fittingSize 把放大宽度锁在旧窗口内。
+    private func naturalStackSize() -> NSSize {
+        let views = stack.arrangedSubviews.filter { !$0.isHidden }
+        let vertical = Preferences.shared.barPosition.isVertical
+        let sizes = views.map { view -> NSSize in
+            if let button = view as? DockButton {
+                return NSSize(width: button.widthConstraint?.constant ?? button.frame.width,
+                              height: button.heightConstraint?.constant ?? button.frame.height)
+            }
+            return view.fittingSize
+        }
+        let gap = CGFloat(max(0, sizes.count - 1)) * stack.spacing
+        let insets = stack.edgeInsets
+        if vertical {
+            return NSSize(width: (sizes.map(\.width).max() ?? 0) + insets.left + insets.right,
+                          height: sizes.reduce(0) { $0 + $1.height } + gap + insets.top + insets.bottom)
+        }
+        return NSSize(width: sizes.reduce(0) { $0 + $1.width } + gap + insets.left + insets.right,
+                      height: (sizes.map(\.height).max() ?? 0) + insets.top + insets.bottom)
+    }
+
     private func contentCross() -> CGFloat {
-        let fitting = stack.fittingSize
+        let fitting = naturalStackSize()
         return Preferences.shared.barPosition.isVertical ? fitting.width : fitting.height
     }
 
     /// The visible bar's thickness: the user's "Dock height", but never thinner
     /// than its contents, so the smallest setting hugs the icons exactly.
     private func barThickness() -> CGFloat {
-        max(CGFloat(Preferences.shared.dockHeight), contentCross())
+        max(CGFloat(Preferences.shared.dockHeight), contentCross() + CGFloat(Preferences.shared.runningDotGap) + 16)
     }
 
     /// Frames the blur to `barThickness` across and the full window length along
@@ -338,14 +363,12 @@ final class DockPanel: NSPanel {
             // bar's width, so its icons sit centered on the visible bar.
             stackAlongStart = stack.topAnchor.constraint(equalTo: container.topAnchor, constant: opticalInset)
             stackAlongEnd = stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -opticalInset)
-            stackCrossCenter = stack.centerXAnchor.constraint(equalTo: effect.centerXAnchor)
         } else {
             effectAlong = effect.widthAnchor.constraint(equalTo: container.widthAnchor, constant: -2 * opticalInset)
             effectAlongCenter = effect.centerXAnchor.constraint(equalTo: container.centerXAnchor)
             effectThickness = effect.heightAnchor.constraint(equalToConstant: barThickness())
             stackAlongStart = stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: opticalInset)
             stackAlongEnd = stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -opticalInset)
-            stackCrossCenter = stack.centerYAnchor.constraint(equalTo: effect.centerYAnchor)
         }
         // Pin the bar to the window's OUTER edge so all hover headroom falls on the
         // inner side and the window (placed by `origin`) never crosses the screen's
@@ -355,6 +378,14 @@ final class DockPanel: NSPanel {
         case .top:    effectCross = effect.topAnchor.constraint(equalTo: container.topAnchor, constant: opticalInset)
         case .left:   effectCross = effect.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: opticalInset)
         case .right:  effectCross = effect.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -opticalInset)
+        }
+        // 外侧锚点使用固定留白；内容放大只向屏幕内侧增长，圆点的屏幕横/纵坐标不漂移。
+        let inset = CGFloat(Preferences.shared.runningDotGap) + 10
+        switch pos {
+        case .bottom: stackCrossCenter = stack.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -inset)
+        case .top: stackCrossCenter = stack.topAnchor.constraint(equalTo: effect.topAnchor, constant: inset)
+        case .left: stackCrossCenter = stack.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: inset)
+        case .right: stackCrossCenter = stack.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -inset)
         }
         effectAlong?.isActive = true
         effectAlongCenter?.isActive = true
@@ -388,7 +419,7 @@ final class DockPanel: NSPanel {
             let restOffset = max(0, (bar - content) / 2)
             let hoverThickness = restOffset + content * CGFloat(prefs.hoverScale) + DockPanel.hoverHeadroom
             baseCross = max(bar, hoverThickness)
-            size = stack.fittingSize
+            size = naturalStackSize()
         } else {
             baseCross = bar
             size = barSizedWindow(bar)
@@ -494,7 +525,7 @@ final class DockPanel: NSPanel {
     /// A window exactly `thickness` across (no hover headroom), fitting the icons
     /// along its length.
     private func barSizedWindow(_ thickness: CGFloat) -> NSSize {
-        var size = stack.fittingSize
+        var size = naturalStackSize()
         if Preferences.shared.barPosition.isVertical { size.width = thickness }
         else { size.height = thickness }
         return size
@@ -559,8 +590,7 @@ final class DockPanel: NSPanel {
         let prefs = Preferences.shared
         let side = CGFloat(prefs.iconSize)
         let dim = CGFloat(prefs.dimLevel)
-        // Two ways to flag running apps (mutually exclusive): dim the not-running
-        // ones, or box the running ones. Boxed style does no dimming.
+        // 圆点总是显示运行状态；旧的边框样式可叠加，固定的未运行项仍变灰。
         let boxed = prefs.runningIndicator == .boxed
         // Snapshot the outgoing icons' widths by `slotKey` *before* the teardown,
         // so an icon that survives a window-count change — e.g. it widens into a
@@ -572,6 +602,7 @@ final class DockPanel: NSPanel {
                       let width = button.widthConstraint?.constant else { return nil }
                 return (key, width)
             }, uniquingKeysWith: { first, _ in first })
+        magnificationCenters.removeAll()
         self.apps = apps
         let keys = slotKeys(of: apps)
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -579,7 +610,19 @@ final class DockPanel: NSPanel {
         // Survivors whose width changes this rebuild (paired with the width they
         // start from), animated alongside an arrival so the bar grows smoothly.
         var morphs: [(button: DockButton, from: CGFloat)] = []
+        var insertedDivider = false
+        let hasPins = apps.contains { $0.isPinned || $0.isLauncher }
         for (app, slotKey) in zip(apps, keys) {
+            if hasPins, !insertedDivider, !app.isPinned, !app.isLauncher {
+                if prefs.dockDividerEnabled {
+                    let divider = DockDividerView(verticalDock: prefs.barPosition.isVertical,
+                        length: side * CGFloat(prefs.dockDividerLength), gap: CGFloat(prefs.dockDividerGap), crossSize: side,
+                        thickness: CGFloat(prefs.dockDividerThickness))
+                    stack.addArrangedSubview(divider)
+                    divider.align(to: effect)
+                }
+                insertedDivider = true
+            }
             // Wide window-label mode: a labeled item is a wider pill with the
             // window's title in white next to a smaller icon (like the Windows
             // taskbar). Decided per app, so "multiple windows" scope can mix wide
@@ -587,8 +630,12 @@ final class DockPanel: NSPanel {
             // never labeled (it stands for no window) and never dimmed (it's not a
             // running/pinned app — it's always live).
             let labeled = !app.isLauncher && prefs.showsWindowLabel(windowCount: app.windowCount)
-            let width = labeled ? CGFloat(prefs.windowLabelWidth) : side
+            let width = labeled ? labelWidth(for: app, side: side) : side
             let button = DockButton()
+            button.cell = DockItemCell()
+            button.usesSharedMagnification = true
+            button.onPointerMoved = { [weak self] point in self?.magnify(at: point) }
+            button.restingWidth = width
             button.isBordered = false
             // Own our layer from birth (the window is only *implicitly* layer-backed
             // via the blur view). `allowsImplicitAnimation` animates a view's layer
@@ -600,11 +647,9 @@ final class DockPanel: NSPanel {
             button.imageScaling = .scaleProportionallyUpOrDown
             button.image = icon(for: app)
             button.toolTip = tooltip(for: app)
-            // Dimmed style fades pinned shortcuts; boxed style frames the running
-            // apps instead and leaves everyone at full opacity. The launcher tile
-            // is always live (not a running/pinned app), so it's never dimmed and
-            // never gets a running box.
-            button.alphaValue = (boxed || app.isLauncher || app.isRunning) ? 1.0 : dim
+            // 仅未运行固定项变灰；运行状态包含其他桌面的进程。
+            button.alphaValue = (app.isPinned && !app.isRunning) ? dim : 1.0
+            button.setRunningDot(app.isRunning && !app.isLauncher)
             if boxed {
                 button.setRunningBox(active: app.isRunning,
                                      gap: CGFloat(prefs.boxGap),
@@ -714,7 +759,7 @@ final class DockPanel: NSPanel {
         var result: [String: CGFloat] = [:]
         for (app, key) in zip(apps, slotKeys(of: apps)) {
             let labeled = !app.isLauncher && prefs.showsWindowLabel(windowCount: app.windowCount)
-            result[key] = labeled ? CGFloat(prefs.windowLabelWidth) : side
+            result[key] = labeled ? labelWidth(for: app, side: side) : side
         }
         return result
     }
@@ -946,6 +991,7 @@ final class DockPanel: NSPanel {
     // MARK: - Drag-to-reorder
 
     private func beginReorder(_ button: DockButton) {
+        magnify(at: nil)
         isReordering = true
         button.setLifted(true)
     }
@@ -954,7 +1000,12 @@ final class DockPanel: NSPanel {
     /// others aside. Driven live as the pointer moves.
     private func updateReorder(_ button: DockButton, at locationInWindow: NSPoint) {
         guard let current = stack.arrangedSubviews.firstIndex(of: button) else { return }
-        let target = slotIndex(forCursorAt: locationInWindow, ignoring: button)
+        let proposed = slotIndex(forCursorAt: locationInWindow, ignoring: button)
+        let group = stack.arrangedSubviews.enumerated().filter {
+            guard let app = ($0.element as? DockButton)?.app, let moving = button.app else { return false }
+            return (app.isPinned || app.isLauncher) == (moving.isPinned || moving.isLauncher)
+        }.map(\.offset)
+        let target = min(max(proposed, group.min() ?? current), group.max() ?? current)
         guard target != current else { return }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.16
@@ -1111,6 +1162,66 @@ final class DockPanel: NSPanel {
         animator().setFrame(NSRect(origin: placedOrigin(forSize: size, on: screen), size: size),
                             display: true)
         invalidateShadow()
+    }
+
+    /// 输入完整标题，按文字真实宽度分配空间；用户宽度作为上限，短标题收缩，超长窗口标题保留提示。
+    private func labelWidth(for app: DockApp, side: CGFloat) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: .callout).pointSize,
+                                    weight: app.isActive ? .bold : .medium)
+        let measured = ceil(((app.title ?? app.name) as NSString).size(withAttributes: [.font: font]).width)
+        return min(CGFloat(Preferences.shared.windowLabelWidth), side * 0.7 + 36 + measured)
+    }
+
+    /// 按指针距离连续放大相邻图标，并让布局为它们让位；拖动和菜单期间冻结。
+    private var magnificationCenters: [ObjectIdentifier: CGFloat] = [:]
+
+    /// 开发预览在中间图标处展示放大布局，不合成鼠标事件或影响正式程序坞。
+    func previewMagnification() {
+        let buttons = stack.arrangedSubviews.compactMap { $0 as? DockButton }
+        guard !buttons.isEmpty else { return }
+        let button = buttons[buttons.count / 2]
+        magnify(at: stack.convert(NSPoint(x: button.frame.midX, y: button.frame.midY), to: nil))
+
+    }
+
+    private func magnify(at point: NSPoint?) {
+        if point == nil, DevelopmentTools.isAppearancePreview,
+           CommandLine.arguments.contains("--magnified") { return } // 静态放大预览不随真实指针退出。
+        guard !isAnimating, !isReordering, !isExternalDragging, !isContextMenuOpen else { return }
+        let prefs = Preferences.shared
+        let buttons = stack.arrangedSubviews.compactMap { $0 as? DockButton }
+        guard !buttons.isEmpty else { return }
+        let vertical = prefs.barPosition.isVertical
+        let side = CGFloat(prefs.iconSize)
+        let cursor = point.map { convertPoint(toScreen: $0) }
+        if magnificationCenters.isEmpty, point != nil {
+            for button in buttons {
+                let center = convertPoint(toScreen: stack.convert(
+                    NSPoint(x: button.frame.midX, y: button.frame.midY), to: nil))
+                magnificationCenters[ObjectIdentifier(button)] = vertical ? center.y : center.x
+            }
+        }
+        let enabled = prefs.hoverEnabled && !SystemDisplay.reduceMotion
+        let radius = (side + CGFloat(prefs.iconSpacing)) * 2.5 // 邻近约两个图标平滑过渡。
+        let scales = buttons.map { button -> CGFloat in
+            guard enabled, let cursor else { return 1 }
+            let center = magnificationCenters[ObjectIdentifier(button)] ?? 0
+            let distance = abs((vertical ? cursor.y : cursor.x) - center)
+            let weight = distance < radius ? (1 + cos(.pi * distance / radius)) / 2 : 0
+            return 1 + (CGFloat(prefs.hoverScale) - 1) * weight
+        }
+        if point == nil { magnificationCenters.removeAll() }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = SystemDisplay.reduceMotion ? 0 : min(prefs.hoverAnimation, 0.12)
+            context.allowsImplicitAnimation = true
+            for (button, scale) in zip(buttons, scales) {
+                button.widthConstraint?.constant = button.restingWidth * scale
+                button.heightConstraint?.constant = side * scale
+            }
+            layoutIfNeeded()
+            effectThickness?.constant = barThickness()
+            sizeWindowToStack()
+        }
     }
 
     // MARK: - Rendering helpers

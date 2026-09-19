@@ -13,7 +13,41 @@ private final class PassthroughBadgeView: NSView {
 
 /// A dock icon button: reports right-clicks, shows a hover effect, and turns a
 /// long-press into a left/right drag so the user can reorder the dock.
+/// 标题与图标使用明确分区，避免 NSButtonCell 根据原始大图尺寸挤掉文字。
+final class DockItemCell: NSButtonCell {
+    override func imageRect(forBounds rect: NSRect) -> NSRect {
+        guard imagePosition == .imageLeading else { return super.imageRect(forBounds: rect) }
+        let side = rect.height * 0.7
+        return NSRect(x: rect.minX + 4, y: rect.midY - side / 2, width: side, height: side)
+    }
+    override func titleRect(forBounds rect: NSRect) -> NSRect {
+        guard imagePosition == .imageLeading else { return super.titleRect(forBounds: rect) }
+        let left = imageRect(forBounds: rect).maxX + 8
+        let height = ceil((font?.ascender ?? 12) - (font?.descender ?? -4)) + 4
+        return NSRect(x: left, y: rect.midY - height / 2,
+                      width: max(0, rect.maxX - left - 8), height: height)
+    }
+}
+
 final class DockButton: NSButton {
+    var onPointerMoved: ((NSPoint) -> Void)?
+    var usesSharedMagnification = false
+    var restingWidth: CGFloat = 0
+    private var runningDot: AdaptiveDockMark?
+
+    /// 运行标记独立于固定项变灰和旧的边框样式；随图标布局但不接管鼠标。
+    func setRunningDot(_ running: Bool) {
+        runningDot?.removeFromSuperview()
+        runningDot = nil
+        guard running else { return }
+        let dot = AdaptiveDockMark(circular: true)
+        dot.alignment = .center
+        dot.setAccessibilityElement(false)
+        addSubview(dot)
+        runningDot = dot
+        needsLayout = true
+    }
+
     /// The app this icon stands for. Carried on the button (instead of an index
     /// tag) so it survives the live reordering of the stack view.
     var app: DockApp?
@@ -139,13 +173,17 @@ final class DockButton: NSButton {
         // view's live bounds, so it stays stable while we're laid out near the
         // panel's edge instead of relying on a snapshot taken at one moment.
         let area = NSTrackingArea(rect: bounds,
-                                  options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                  options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
                                   owner: self, userInfo: nil)
         addTrackingArea(area)
         trackingArea = area
     }
 
-    override func mouseEntered(with event: NSEvent) { setHover(true) }
+    override func mouseEntered(with event: NSEvent) {
+        setHover(true)
+        onPointerMoved?(event.locationInWindow)
+    }
+    override func mouseMoved(with event: NSEvent) { onPointerMoved?(event.locationInWindow) }
     override func mouseExited(with event: NSEvent) { setHover(false) }
     override func rightMouseDown(with event: NSEvent) { onRightClick?() }
     /// Button number 2 is the middle mouse button (0 = left, 1 = right); other
@@ -177,7 +215,7 @@ final class DockButton: NSButton {
         // Honor Reduce Motion: keep the (static) highlight, but skip the magnify and
         // apply it instantly so there's no animated scaling.
         let reduce = SystemDisplay.reduceMotion
-        let scale = reduce ? 1.0 : CGFloat(prefs.hoverScale)
+        let scale = (reduce || usesSharedMagnification) ? 1.0 : CGFloat(prefs.hoverScale)
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = reduce ? 0 : prefs.hoverAnimation
             ctx.allowsImplicitAnimation = true
@@ -335,6 +373,21 @@ final class DockButton: NSButton {
     override func layout() {
         super.layout()
         updateBoxLayer() // bounds are only real once we've been laid out
+        let size: CGFloat = 4 // 圆点直径固定，不参与图标放大。
+        let gap = CGFloat(Preferences.shared.runningDotGap)
+        let imageRect = cell?.imageRect(forBounds: bounds) ?? bounds
+        switch Preferences.shared.barPosition {
+        case .bottom:
+            runningDot?.frame = NSRect(x: imageRect.midX - size / 2,
+                y: isFlipped ? bounds.maxY + gap : -gap - size, width: size, height: size)
+        case .top:
+            runningDot?.frame = NSRect(x: imageRect.midX - size / 2,
+                y: isFlipped ? -gap - size : bounds.maxY + gap, width: size, height: size)
+        case .left:
+            runningDot?.frame = NSRect(x: -gap - size, y: imageRect.midY - size / 2, width: size, height: size)
+        case .right:
+            runningDot?.frame = NSRect(x: bounds.maxX + gap, y: imageRect.midY - size / 2, width: size, height: size)
+        }
         if let adaptiveTitle, let cell {
             adaptiveTitle.frame = cell.titleRect(forBounds: bounds)
         }

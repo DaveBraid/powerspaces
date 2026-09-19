@@ -5,6 +5,12 @@
 import AppKit
 
 // 本地化验证和预览均在正式启动前分流，不注册桌面监听或改写系统偏好。
+if CommandLine.arguments.contains("--check-native-dock") {
+    exit(DevelopmentTools.checkNativeDockMaterial() ? 0 : 1)
+}
+if CommandLine.arguments.contains("--check-dock-layout") {
+    exit(DevelopmentTools.checkDockLayout() ? 0 : 1)
+}
 if CommandLine.arguments.contains("--check-quit") {
     exit(DevelopmentTools.checkQuitAction() ? 0 : 1)
 }
@@ -21,7 +27,7 @@ if DevelopmentTools.isPreview {
     let strategies = StrategySettingsController(
         url: DevelopmentTools.previewDirectory.appendingPathComponent("config.json"))
     if DevelopmentTools.isGlassPreview { GlassComparisonWindow.show() }
-    else { PreferencesWindowController.show(strategies: strategies) }
+    else if !CommandLine.arguments.contains("--dock-only") { PreferencesWindowController.show(strategies: strategies) }
     app.run()
     exit(0)
 }

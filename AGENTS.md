@@ -134,3 +134,5 @@ swift run --build-system native PowerspacesApp --preview-appearance # 设置与�
 - 本机默认 swiftbuild 后端误将 SDK 标记为 14.0；应用构建和预览暂用 `--build-system native`。交付前用 `xcrun vtool -show-build` 确认真正的 SDK 版本，最低部署版本仍保留 14.0；不要用修改 Mach-O 的方式伪造 SDK。
 - macOS 27 程序坞透光调节隔离于 `GlassBackgroundTuning.swift`，使用经探测的私有玻璃滤镜参数；保留版本限制、原值恢复及失效回退，不修改系统全局设置或增加定时轮询。设置窗口不使用该调节。
 - 外观设置分开维护材质、明暗与背景不透明度；运行 `--check-appearance` 检查旧配置兼容，系统“降低透明度”优先于应用滑块。
+
+- 原生 Dock 配方封装于 `NativeDockMaterial.swift` / `CDockMaterial`；私有 ABI 当前仅验证 Apple Silicon、macOS 27.0 构建 26A428。扩展白名单前必须重新核对类型布局和后台渲染；保持动态符号探测、公开材质回退及非激活面板行为。`--check-native-dock` 验证这条路径。

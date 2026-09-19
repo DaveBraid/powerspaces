@@ -4,13 +4,19 @@
 
 import AppKit
 
-/// 隔离 macOS 27 私有玻璃参数；分别调整背景与边缘高光，保持前景及折射。
-@available(macOS 26.0, *)
+/// 隔离 macOS 27 私有玻璃参数；只调整背景，保持原生高光、前景及折射。
 @MainActor
-final class TunableGlassEffectView: NSGlassEffectView {
-    var highlightStrength: Double = 1 { didSet { scheduleTuning() } }
-    var highlightWidth: Double = 1 { didSet { scheduleTuning() } }
-    var enhancesEdges = false { didSet { scheduleTuning() } }
+final class GlassLayerTuning {
+    weak var layer: CALayer?
+    private var treeObservations: [ObjectIdentifier: NSKeyValueObservation] = [:]
+
+    /// 更换渲染树时释放旧观察者；同一棵树保留原值，避免把已调节的值当成新基准。
+    func attach(to layer: CALayer?) {
+        guard self.layer !== layer else { return }
+        entries.removeAll()
+        treeObservations.removeAll()
+        self.layer = layer
+    }
     var backgroundTransparency: Double = 0 { didSet { scheduleTuning() } }
     private var pending = false
     private var entries: [ObjectIdentifier: Entry] = [:]
@@ -21,17 +27,6 @@ final class TunableGlassEffectView: NSGlassEffectView {
         var applied: NSObject?
         var observation: NSKeyValueObservation?
         init(original: NSObject) { self.original = original }
-    }
-
-    /// 布局之后检查实际滤镜；不在 SwiftUI 内部更新过程中直接修改图层。
-    override func layout() {
-        super.layout()
-        scheduleTuning()
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        scheduleTuning()
     }
 
     /// 合并系统重建与滑块更新，避免计时轮询及重入。
@@ -45,15 +40,23 @@ final class TunableGlassEffectView: NSGlassEffectView {
         }
     }
 
-    /// 仅接受探测成功的滤镜；透光率 0 恢复背景原值，高光独立设置，未知系统保持原样。
+    /// 仅接受探测成功的滤镜；透光率 0 恢复背景原值，高光保持原值，未知系统保持原样。
     func applyBackgroundTuning() {
         guard #available(macOS 27.0, *), ProcessInfo.processInfo.operatingSystemVersion.majorVersion == 27,
               let layer else { return }
         let amount = SystemDisplay.reduceTransparency ? 0 : min(1, max(0, backgroundTransparency))
         var found = Set<ObjectIdentifier>()
+        var nodes = Set<ObjectIdentifier>()
         tuningAvailable = false
         func visit(_ layer: CALayer) {
             defer { for child in layer.sublayers ?? [] { visit(child) } }
+            let node = ObjectIdentifier(layer)
+            nodes.insert(node)
+            if treeObservations[node] == nil {
+                treeObservations[node] = layer.observe(\.sublayers) { [weak self] _, _ in
+                    Task { @MainActor [weak self] in self?.scheduleTuning() }
+                }
+            }
             guard let filters = layer.filters else { return }
             for (index, value) in filters.enumerated() {
                 guard let filter = value as? NSObject, String(describing: filter) == "glassBackground",
@@ -79,22 +82,11 @@ final class TunableGlassEffectView: NSGlassEffectView {
                 tuningAvailable = true
                 let radius = blur.doubleValue * (1 - amount) // 只减弱散射，不淡出光学层。
                 let opacity = face.doubleValue * (1 - amount) // 保留系统颜色矩阵及其动态适配。
-                var edgeValues: [String: Double] = [:]
-                for (key, requested) in [("inputKeyFillHighlightAmount", min(2, max(0, highlightStrength))),
-                                         ("inputKeyFillHighlightHeight", min(3, max(0.25, highlightWidth)))] {
-                    if keys.contains(key), let original = entry.original.value(forKey: key) as? NSNumber {
-                        edgeValues[key] = enhancesEdges ? requested : original.doubleValue
-                    }
-                }
-                let edgesMatch = edgeValues.allSatisfy { key, value in
-                    (filter.value(forKey: key) as? NSNumber)?.doubleValue == value
-                }
-                if edgesMatch, (filter.value(forKey: "inputBlurRadius") as? NSNumber)?.doubleValue == radius,
+                if (filter.value(forKey: "inputBlurRadius") as? NSNumber)?.doubleValue == radius,
                    (filter.value(forKey: "inputFaceOpacity") as? NSNumber)?.doubleValue == opacity { continue }
                 guard let copy = (entry.original as? NSCopying)?.copy(with: nil) as? NSObject else { continue }
                 copy.setValue(radius, forKey: "inputBlurRadius")
                 copy.setValue(opacity, forKey: "inputFaceOpacity")
-                for (key, value) in edgeValues { copy.setValue(value, forKey: key) }
                 entry.applied = copy
                 var updated = filters
                 updated[index] = copy
@@ -106,5 +98,19 @@ final class TunableGlassEffectView: NSGlassEffectView {
         }
         visit(layer)
         entries = entries.filter { found.contains($0.key) } // 原生图层替换后释放旧观察者。
+        treeObservations = treeObservations.filter { nodes.contains($0.key) }
     }
+
+}
+
+/// 公开 NSGlassEffectView 回退复用同一背景调节器，保留 macOS 26 及旧配置行为。
+@available(macOS 26.0, *)
+@MainActor
+final class TunableGlassEffectView: NSGlassEffectView {
+    private let tuning = GlassLayerTuning()
+    var backgroundTransparency: Double { get { tuning.backgroundTransparency } set { tuning.backgroundTransparency = newValue } }
+    var tuningAvailable: Bool { tuning.tuningAvailable }
+    override func layout() { super.layout(); tuning.attach(to: layer); tuning.backgroundTransparency = backgroundTransparency }
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); tuning.attach(to: layer); tuning.backgroundTransparency = backgroundTransparency }
+    func applyBackgroundTuning() { tuning.attach(to: layer); tuning.applyBackgroundTuning() }
 }

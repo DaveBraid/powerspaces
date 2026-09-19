@@ -11,21 +11,22 @@ final class GlassComparisonWindow {
 
     /// 同时展示原生与增强透光的 64 点玻璃，确保比较时背景和几何一致。
     static func show() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 360),
-                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 760, height: 360),
+                              styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
         self.window = window
-        window.title = "Liquid Glass — native / enhanced edges · adaptive titles"
+        window.title = "Liquid Glass — public clear / native Dock recipe"
+        window.hidesOnDeactivate = false
         window.isReleasedWhenClosed = false
         let backdrop = ComparisonBackdrop(frame: window.contentLayoutRect)
         window.contentView = backdrop
-        for (index, clear) in [false, true].enumerated() {
+        for (index, nativeDock) in [false, true].enumerated() {
             let glass = GlassSurfaceView(frame: NSRect(x: 40, y: 230 - index * 150, width: 680, height: 64))
+            glass.allowsNativeDockMaterial = nativeDock
             glass.dockMode = true
             glass.backgroundTransparency = 0.8
-            glass.enhancesEdges = clear
             glass.cornerRadius = 20
             backdrop.addSubview(glass)
-            // 与真实 Dock 一样让内容属于 contentView；不使用独立前景层。
+            // 前景始终归属现有 AppKit 容器，只有背景材质不同。
             let symbols = NSStackView()
             symbols.spacing = 35
             for name in ["com.apple.finder", "com.apple.Safari", "com.apple.Terminal"] {
@@ -47,17 +48,18 @@ final class GlassComparisonWindow {
             title.widthAnchor.constraint(equalToConstant: 150).isActive = true
             title.heightAnchor.constraint(equalToConstant: 44).isActive = true
             symbols.addArrangedSubview(title)
+            let divider = DockDividerView(verticalDock: false, length: 42, gap: 8, crossSize: 44)
+            symbols.addArrangedSubview(divider)
             glass.glassContent.addSubview(symbols)
+            divider.align(to: glass)
             symbols.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
                 symbols.centerXAnchor.constraint(equalTo: glass.glassContent.centerXAnchor),
                 symbols.centerYAnchor.constraint(equalTo: glass.glassContent.centerYAnchor),
             ])
         }
-        NSApp.setActivationPolicy(.regular)
         window.center()
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        window.orderFrontRegardless()
     }
 }
 
@@ -72,7 +74,7 @@ private final class ComparisonBackdrop: NSView {
                 (column.isMultiple(of: 2) ? NSColor.black : NSColor.white).setFill()
                 NSRect(x: CGFloat(column * 40), y: y - 12, width: 40, height: 88).fill()
             }
-            let label = row == 0 ? "clear 80% · native edges" : "clear 80% · enhanced edges"
+            let label = row == 0 ? "Public clear · 80% transparency" : "Native Dock recipe · windowAppearsActive · 80%"
             (label as NSString).draw(at: NSPoint(x: 40, y: y + 87), withAttributes: [
                 .font: NSFont.systemFont(ofSize: 15), .foregroundColor: NSColor.black,
             ])

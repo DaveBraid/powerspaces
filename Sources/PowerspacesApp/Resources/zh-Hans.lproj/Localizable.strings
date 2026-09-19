@@ -207,7 +207,7 @@
 "How thick the bar is, in points. The smallest setting hugs the icons exactly; larger values add padding around them." = "程序坞的厚度，单位为点。最小值紧贴图标；增大数值可增加图标周围的留白。";
 "How to make a new window for apps that don't have their own rule." = "没有专属规则的应用如何新建窗口。";
 "How to make a new window for apps that don't have their own rule. Set a per-app rule from an icon's right-click menu → “When open elsewhere”. Saved to ~/.config/powerspaces/config.json." = "没有专属规则的应用如何新建窗口。可通过图标右键菜单中的“已在其他桌面打开时”设置单独规则。配置保存在 ~/.config/powerspaces/config.json。";
-"How wide each labeled window item is, in points." = "带标题的窗口项目宽度，单位为点。";
+"How wide each labeled window item is, in points." = "带标题项目的最大宽度，单位为点。短标题按实际长度收缩。";
 "Icon animation" = "图标动画";
 "Icon color" = "图标颜色";
 "Icon size" = "图标大小";
@@ -502,11 +502,11 @@
 "Whether AltTab is installed. Powerspaces uses it for the per-desktop ⌘-Tab switcher; it's a free, open-source app you install separately." = "AltTab 是用于仅切换当前桌面窗口的免费开源工具，需要单独安装。";
 "Whether macOS currently lets Powerspaces control windows. Needed to close or minimize windows and read window titles." = "macOS 是否允许 PowerSpaces 控制窗口。关闭、最小化窗口和读取标题需要此权限。";
 "Whether the powerspaces binary the extension calls is installed. “Install CLI” puts it in ~/.local/bin with no admin needed." = "扩展调用的 powerspaces 命令行工具是否已安装。“安装 CLI”会安装到 ~/.local/bin，无需管理员权限。";
-"Whether ⌘-hidden apps and running apps with no open window still appear in the dock. Both on by default, matching macOS's own Dock." = "控制隐藏的应用和仍在运行但没有窗口的应用是否显示在程序坞中。两项默认开启，与 macOS 程序坞保持一致。";
+"Whether ⌘-hidden apps and running apps with no open window still appear in the dock. Both on by default, matching macOS's own Dock." = "隐藏的应用遵循此设置。无窗口的运行中应用保留在最后所属的桌面。";
 "Which modifier forces a brand-new window on click." = "点击时按住此修饰键，可强制新建窗口。";
 "Which screen edge the bar sits on." = "程序坞停靠在屏幕的哪一侧。";
 "Wide (240)" = "宽 （240）";
-"Window item width" = "窗口项目宽度";
+"Window item width" = "窗口项目最大宽度";
 "Windows" = "窗口";
 "With no menu-bar icon you can't open Preferences from the menu bar. To get back here, right-click anywhere on the Powerspaces dock and choose “Open Preferences”." = "隐藏菜单栏图标后，可右键点击 PowerSpaces 程序坞并选择“打开设置”返回此处。";
 "add remove poof slide fade" = "添加 移除 膨胀 滑动 淡入 淡出 add remove poof slide fade";
@@ -596,7 +596,11 @@
 "Automatic title color" = "自动适配标题颜色";
 "Follow System uses the native glass appearance. With no custom tint, Tint Strength has no color to adjust; choose Light, Dark, or enable tinting." = "“跟随系统”使用原生玻璃明暗。未设置着色时，“玻璃着色强度”无可调颜色；选择浅色、深色或启用程序坞着色后即可调节。";
 
-"Edge highlight strength" = "边缘高光强度";
-"Edge highlight width" = "边缘高光宽度";
-"Adjust both edges together. 0% turns highlights off; 100% is the default." = "同时调节两侧边缘高光。0% 关闭高光，100% 为默认强度。";
-"Width relative to the default highlight. Independent of glass transparency." = "相对于默认高光的宽度，独立于玻璃透光率。";
+"Native (1.5×)" = "原生风格（1.5×）";
+"Running dot gap" = "运行圆点间距";
+"Show pinned-app divider" = "显示固定应用分割线";
+"Divider side spacing" = "分割线两侧留白";
+
+"Divider length" = "分割线长度";
+
+"Divider thickness" = "分割线粗细";

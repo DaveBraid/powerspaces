@@ -82,6 +82,14 @@ public struct DockApp: Equatable, Sendable {
         DockApp(bundleID: nil, name: "Applications", pid: nil, windowCount: 0, isLauncher: true)
     }
 
+    /// 更新进程状态，保留当前桌面的窗口与固定信息；用于其他桌面上运行的固定项。
+    public func withRunningPID(_ pid: pid_t?) -> DockApp {
+        DockApp(bundleID: bundleID, name: name, pid: pid, windowCount: windowCount,
+                isPinnedHere: isPinnedHere, isPinnedEverywhere: isPinnedEverywhere,
+                isExcludedHere: isExcludedHere, windowIDs: windowIDs, windowID: windowID,
+                title: title, isLauncher: isLauncher, isActive: isActive)
+    }
+
     /// A copy of this entry carrying a live window label (its title-bar text).
     public func withTitle(_ title: String?) -> DockApp {
         DockApp(bundleID: bundleID, name: name, pid: pid, windowCount: windowCount,
@@ -200,8 +208,7 @@ public enum DockModel {
     ///
     /// `order` is the user's saved per-desktop arrangement (a list of
     /// `orderKey`s, see `applying(order:)`). Apps in it appear in that order;
-    /// anything not in it (e.g. a freshly launched app) keeps its default
-    /// position and is appended after.
+    /// anything not in it keeps its default order within its pinned/running section.
     ///
     /// `includeLauncher` adds the special App Launcher tile (`DockApp.launcher`).
     /// It defaults to the leftmost slot but participates in `order` like any other
@@ -323,7 +330,10 @@ public enum DockModel {
                 effectiveOrder = [DockApp.launcherOrderKey] + order
             }
         }
-        return applying(order: effectiveOrder, to: result)
+        let ordered = applying(order: effectiveOrder, to: result)
+        // 保存的拖动顺序只在分区内生效；启动器随固定项放在前区。
+        return ordered.filter { $0.isPinned || $0.isLauncher }
+            + ordered.filter { !$0.isPinned && !$0.isLauncher }
     }
 
     /// Expands each app into one entry per window it has on the current Space,

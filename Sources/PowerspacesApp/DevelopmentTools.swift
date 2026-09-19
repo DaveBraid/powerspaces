@@ -8,7 +8,7 @@ import SpaceKit
 enum DevelopmentTools {
     static let isAppearancePreview = CommandLine.arguments.contains("--preview-appearance")
     static let isGlassPreview = CommandLine.arguments.contains("--preview-glass")
-    static let isPreview = isGlassPreview || isAppearancePreview || CommandLine.arguments.contains("--preview-settings")
+    static let isPreview = isGlassPreview || isAppearancePreview || CommandLine.arguments.contains("--preview-settings") || CommandLine.arguments.contains("--check-dock-layout")
     static let previewDirectory = FileManager.default.temporaryDirectory
         .appendingPathComponent("powerspaces-preview-\(UUID().uuidString)")
 
@@ -32,6 +32,151 @@ enum DevelopmentTools {
         return true
     }
 
+    /// 用临时配置测量四边停靠的真实窗口坐标，验证缩放不会移动圆点外侧基线。
+    @MainActor static func checkDockLayout() -> Bool {
+        _ = NSApplication.shared
+        guard let screen = NSScreen.main else { return false }
+        defer { try? FileManager.default.removeItem(at: previewDirectory) }
+        let prefs = Preferences.shared
+        prefs.hoverEnabled = true
+        prefs.hoverScale = 1.5
+        prefs.hoverAnimation = 0
+        prefs.runningDotGap = 7
+        prefs.showWindowLabels = false
+        var failures = 0
+        func buttons(_ view: NSView) -> [DockButton] {
+            if let button = view as? DockButton { return [button] }
+            return view.subviews.flatMap(buttons)
+        }
+        for position in [BarPosition.bottom, .top, .left, .right] {
+            prefs.barPosition = position
+            let panel = DockPanel(screen: screen)
+            panel.update(apps: [
+                DockApp(bundleID: "one", name: "One", pid: 1, windowCount: 1, isPinnedHere: true),
+                DockApp(bundleID: "two", name: "Two", pid: 2, windowCount: 1),
+            ], animateChanges: false)
+            panel.show()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            let items = buttons(panel.contentView!)
+            func centers() -> [NSPoint] {
+                items.compactMap { button in
+                    guard let dot = button.subviews.first(where: { $0 is AdaptiveDockMark }) else { return nil }
+                    let frame = panel.convertToScreen(button.convert(dot.frame, to: nil))
+                    return NSPoint(x: frame.midX, y: frame.midY)
+                }
+            }
+            let before = centers()
+            let widths = items.map { $0.widthConstraint?.constant ?? 0 }
+            panel.previewMagnification()
+            panel.contentView?.layoutSubtreeIfNeeded()
+            let after = centers()
+            let fixed = zip(before, after).allSatisfy {
+                abs(position.isVertical ? $0.x - $1.x : $0.y - $1.y) < 1
+            }
+            let grew = zip(items, widths).contains { ($0.widthConstraint?.constant ?? 0) > $1 + 1 }
+            func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+            let tree = descendants(panel.contentView!)
+            let divider = tree.compactMap { $0 as? DockDividerView }.first
+            let glass = tree.compactMap { $0 as? GlassSurfaceView }.first
+            let centered: Bool
+            if let divider, let glass {
+                let mark = divider.mark.convert(divider.mark.bounds, to: nil)
+                let surface = glass.convert(glass.bounds, to: nil)
+                let actualThickness = position.isVertical ? mark.height : mark.width
+                centered = abs(actualThickness - prefs.dockDividerThickness) < 0.01 && abs(position.isVertical ? mark.midX - surface.midX : mark.midY - surface.midY) < 0.5
+            } else { centered = false }
+            let pass = before.count == 2 && after.count == 2 && fixed && grew && centered
+            if !pass { failures += 1 }
+            print("Dock anchors \(position): \(pass ? "PASS" : "FAIL") \(before) -> \(after)")
+            panel.close()
+        }
+        print("Dock layout: \(failures) failures")
+        return failures == 0
+    }
+
+    /// 独立进程内核对私有桥接与非焦点渲染，未安装前即可发现 ABI 或材质失效。
+    @MainActor static func checkNativeDockMaterial() -> Bool {
+        _ = NSApplication.shared
+        guard let recipe = NativeDockRecipe.shared else {
+            print("Native Dock unavailable: \(NativeDockRecipe.unavailableReason)")
+            return false
+        }
+        let panel = NSPanel(contentRect: NSRect(x: 100, y: 200, width: 480, height: 76),
+                            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isReleasedWhenClosed = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hidesOnDeactivate = false
+        let host = NativeDockMaterialView(recipe: recipe)
+        panel.contentView = host
+        panel.orderFrontRegardless()
+        defer { panel.close() }
+        var failed = false
+        host.onFailure = { failed = true }
+        for (width, appearance) in [(480.0, NSAppearance.Name.aqua), (580.0, .darkAqua)] {
+            panel.setContentSize(NSSize(width: width, height: 76))
+            host.update(radius: 25, tint: nil, appearance: NSAppearance(named: appearance),
+                        transparency: 0.65)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.35))
+            let active = NativeDockMaterialView.hasActiveHighlight(host.layer)
+            print("Native Dock: appActive=\(NSApp.isActive) key=\(panel.isKeyWindow) width=\(width) highlight=\(active) tuning=\(host.tuning.tuningAvailable)")
+            if !active || !host.tuning.tuningAvailable || panel.isKeyWindow { failed = true }
+        }
+        // 在实际包装层中验证前景命中、公开回退、浓度与原生高光参数不变。
+        let surface = GlassSurfaceView(frame: NSRect(x: 0, y: 0, width: 480, height: 76))
+        surface.dockMode = true
+        let button = NSButton(frame: NSRect(x: 20, y: 20, width: 40, height: 30))
+        surface.glassContent.addSubview(button)
+        panel.contentView = surface
+        func effects(_ layer: CALayer?) -> [NSObject] {
+            guard let layer else { return [] }
+            let own = layer.responds(to: NSSelectorFromString("effect"))
+                ? (layer.value(forKey: "effect") as? NSObject).map { [$0] } ?? [] : []
+            return own + (layer.sublayers ?? []).flatMap(effects)
+        }
+        func backdrop(_ layer: CALayer?) -> NSObject? {
+            guard let layer else { return nil }
+            if let filter = layer.filters?.compactMap({ $0 as? NSObject }).first(where: {
+                String(describing: $0) == "glassBackground"
+            }) { return filter }
+            return (layer.sublayers ?? []).compactMap(backdrop).first
+        }
+        var initialBlur: Double?
+        for amount in [0.0, 0.4, 0.8, 1.0, 0.0] {
+            surface.backgroundTransparency = amount
+            surface.material = amount == 0.8 ? .menu : .hudWindow
+            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+            let native = surface.subviews.compactMap { $0 as? NativeDockMaterialView }.first
+            let blur = backdrop(native?.layer)?.value(forKey: "inputBlurRadius") as? NSNumber
+            if initialBlur == nil { initialBlur = blur?.doubleValue }
+            let densityOK = initialBlur.map { baseline in
+                blur.map { abs($0.doubleValue - baseline * (1 - amount)) < 0.0001 } ?? false
+            } ?? false
+            let highlight = effects(native?.layer).first { String(describing: type(of: $0)) == "CASDFKeyFillHighlightEffect" }
+            let amountOK = (highlight?.value(forKey: "keyAmount") as? NSNumber)?.doubleValue == 0.5
+            let widthOK = (highlight?.value(forKey: "keyHeight") as? NSNumber)?.doubleValue == 1
+            let hit = surface.hitTest(surface.convert(NSPoint(x: 5, y: 5), from: button)) === button
+            let success = surface.glassContent.frame == surface.bounds && surface.usesNativeDockMaterial && densityOK && amountOK && widthOK && hit
+                && NativeDockMaterialView.hasActiveHighlight(native?.layer) && !panel.isKeyWindow
+            print("Integrated Dock: transparency=\(amount) pass=\(success)")
+            if !success { failed = true }
+        }
+        surface.allowsNativeDockMaterial = false
+        surface.layoutSubtreeIfNeeded()
+        let fallbackOK = !surface.usesNativeDockMaterial && !button.isHiddenOrHasHiddenAncestor
+            && surface.hitTest(surface.convert(NSPoint(x: 5, y: 5), from: button)) === button
+        print("Public fallback: \(fallbackOK)")
+        if !fallbackOK { failed = true }
+        surface.allowsNativeDockMaterial = true
+        surface.solid = true
+        if surface.usesNativeDockMaterial || button.isHiddenOrHasHiddenAncestor { failed = true }
+        surface.solid = false
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        if !surface.usesNativeDockMaterial || panel.isKeyWindow { failed = true }
+        print("Native Dock check: \(failed ? "FAIL" : "PASS")")
+        return !failed
+    }
+
     /// 验证外观配置的边界、持久化与旧材质迁移；只使用临时文件。
     @MainActor static func checkAppearance() -> Bool {
         let directory = FileManager.default.temporaryDirectory
@@ -44,18 +189,30 @@ enum DevelopmentTools {
         }
         let prefs = Preferences(url: url)
         check(prefs.dockOpacity == 1, "default opacity")
-        check(prefs.glassHighlightStrength == 1 && prefs.glassHighlightWidth == 1, "default highlights")
-        prefs.glassHighlightStrength = 1.5
-        prefs.glassHighlightWidth = 2.25
+        prefs.runningDotGap = 9
+        prefs.dockDividerEnabled = false
+        prefs.dockDividerGap = 13
+        check(prefs.dockDividerLength == 0.65, "default divider length")
+        prefs.dockDividerLength = 0.85
+        check(prefs.dockDividerThickness == 1, "default divider thickness")
+        prefs.dockDividerThickness = 2.5
+        let marks = Preferences(url: url)
+        check(marks.runningDotGap == 9 && !marks.dockDividerEnabled && marks.dockDividerGap == 13 && marks.dockDividerLength == 0.85 && marks.dockDividerThickness == 2.5,
+              "persisted dock marks")
+        prefs.runningDotGap = -1
+        prefs.dockDividerGap = 99
+        prefs.dockDividerThickness = 99
+        check(prefs.dockDividerThickness == 4, "maximum divider thickness")
+        prefs.dockDividerThickness = -1
+        check(prefs.dockDividerThickness == 0.5, "minimum divider thickness")
+        prefs.dockDividerLength = 3
+        check(prefs.dockDividerLength == 1, "bounded divider length")
+        check(prefs.runningDotGap == 0 && prefs.dockDividerGap == 24, "bounded dock gaps")
         prefs.glassTransparency = 0.42
         prefs.dockOpacity = 0.37
         let reloaded = Preferences(url: url)
         check(reloaded.dockOpacity == 0.37, "persisted opacity")
         check(reloaded.glassTransparency == 0.42, "persisted glass transparency")
-        check(reloaded.glassHighlightStrength == 1.5 && reloaded.glassHighlightWidth == 2.25, "persisted highlights")
-        prefs.glassHighlightStrength = -1
-        prefs.glassHighlightWidth = 9
-        check(prefs.glassHighlightStrength == 0 && prefs.glassHighlightWidth == 3, "clamped highlights")
         prefs.glassTransparency = 2
         check(prefs.glassTransparency == 1, "clamped glass transparency")
         prefs.dockOpacity = -1
@@ -76,6 +233,25 @@ enum DevelopmentTools {
             let saved = Preferences(url: url)
             check(saved.dockBackground == .glass && saved.glassTone == .darker, "persisted appearance")
         } catch { check(false, "legacy fixture: \(error)") }
+        // 实际合成器回调测试：整段文字在黑白背景间统一切换，混合背景也不出现像素级颜色。
+        let contrastWindow = NSPanel(contentRect: NSRect(x: 100, y: 100, width: 320, height: 100),
+            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        let background = NSView(frame: contrastWindow.contentLayoutRect)
+        background.wantsLayer = true
+        let adaptive = AdaptiveDockLabel(text: "Whole title 整体", font: .systemFont(ofSize: 18))
+        adaptive.frame = NSRect(x: 20, y: 25, width: 240, height: 30)
+        background.addSubview(adaptive)
+        let line = AdaptiveDockMark(circular: false)
+        line.frame = NSRect(x: 285, y: 15, width: 1.5, height: 60)
+        background.addSubview(line)
+        contrastWindow.contentView = background
+        contrastWindow.orderFrontRegardless()
+        for (color, expected) in [(NSColor.black, NSColor.white), (.white, .black), (.black, .white)] {
+            background.layer?.backgroundColor = color.cgColor
+            RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+            check(adaptive.textColor == expected && line.textColor == expected, "whole title and divider contrast on \(color)")
+        }
+        contrastWindow.close()
         let button = DockButton(frame: NSRect(x: 0, y: 0, width: 200, height: 64))
         button.isBordered = false
         button.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)
@@ -152,20 +328,6 @@ enum DevelopmentTools {
                     check(Array(values[2...]) == Array(original[2...]), "refraction and highlights unchanged")
                     check(glass.alphaValue == 1, "glass layer retains full alpha")
                 }
-                glass.enhancesEdges = true
-                glass.applyBackgroundTuning()
-                let edgeFilter = backdrop(glass.layer)!.1
-                check((edgeFilter.value(forKey: "inputKeyFillHighlightAmount") as? NSNumber)?.doubleValue == 1,
-                      "enhanced native edge highlight")
-                glass.highlightStrength = 0
-                glass.highlightWidth = 2.25
-                glass.applyBackgroundTuning()
-                let adjusted = backdrop(glass.layer)!.1
-                check((adjusted.value(forKey: "inputKeyFillHighlightAmount") as? NSNumber)?.doubleValue == 0,
-                      "highlight off")
-                check((adjusted.value(forKey: "inputKeyFillHighlightHeight") as? NSNumber)?.doubleValue == 2.25,
-                      "adjustable highlight width")
-                glass.enhancesEdges = false
                 glass.backgroundTransparency = 0.65
                 glass.applyBackgroundTuning()
                 layer.filters = [baseline] // 模拟系统因外观变化重建滤镜。
@@ -235,16 +397,26 @@ final class SettingsPreviewDelegate: NSObject, NSApplicationDelegate {
     private let sampleApps = [
         DockApp(bundleID: "com.apple.finder", name: "Finder", pid: nil, windowCount: 0, isPinnedHere: true),
         DockApp(bundleID: "com.apple.Safari", name: "Safari", pid: nil, windowCount: 0, isPinnedHere: true),
-        DockApp(bundleID: "com.apple.Terminal", name: "Terminal", pid: nil, windowCount: 0, isPinnedHere: true),
+        DockApp(bundleID: "com.apple.Terminal", name: "Terminal", pid: 1, windowCount: 1, isPinnedHere: true),
+        DockApp(bundleID: "com.apple.TextEdit", name: "TextEdit", pid: 1, windowCount: 1,
+                title: "中文与 English 标题布局预览"),
     ]
 
     /// 外观预览使用静态图标，不连接真实窗口策略或桌面管理。
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard DevelopmentTools.isAppearancePreview, let screen = NSScreen.main else { return }
+        if CommandLine.arguments.contains("--dock-only") {
+            Preferences.shared.showWindowLabels = true
+            Preferences.shared.windowLabelScope = .all
+            Preferences.shared.hoverScale = 1.5
+        }
         let panel = DockPanel(screen: screen)
         dock = panel
         panel.update(apps: sampleApps, animateChanges: false)
         panel.show()
+        if CommandLine.arguments.contains("--magnified") {
+            DispatchQueue.main.async { panel.previewMagnification() }
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(refreshDock),
                                                name: .preferencesDidChange, object: nil)
     }

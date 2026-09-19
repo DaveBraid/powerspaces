@@ -54,6 +54,26 @@ final class Harness {
 
 let h = Harness()
 
+h.test("windowless ownership survives switches and clears exited processes") {
+    var owner = WindowlessOwnership()
+    owner.update(livePIDs: [10, 20], pidsWithWindows: [10],
+                 visibleScopes: [10: ["screen/A"]], fallbackScope: "screen/A")
+    owner.update(livePIDs: [10, 20], pidsWithWindows: [],
+                 visibleScopes: [:], fallbackScope: "screen/B")
+    h.ok(owner.contains(10, scope: "screen/A"))
+    h.ok(owner.contains(20, scope: "screen/A"))
+    h.ok(!owner.contains(10, scope: "screen/B"))
+    owner.update(livePIDs: [10], pidsWithWindows: [10],
+                 visibleScopes: [10: ["screen/B", "other/C"]], fallbackScope: "screen/B")
+    h.ok(!owner.contains(20, scope: "screen/A"))
+    h.ok(!owner.contains(10, scope: "screen/A"))
+    h.ok(owner.contains(10, scope: "other/C"))
+    owner.update(livePIDs: [10, 30], pidsWithWindows: [30],
+                 visibleScopes: [:], fallbackScope: "screen/B")
+    h.ok(!owner.contains(30, scope: "screen/B"), "another desktop's windows do not become windowless")
+}
+
+
 // MARK: - Helpers
 
 func win(_ id: CGWindowID, _ pid: pid_t = 100, name: String = "App",
@@ -771,17 +791,17 @@ h.test("a local pin wins over an exception (still shown, not excluded)") {
 
 print("Dock order (saved arrangement)")
 
-h.test("the saved order overrides the default pinned-then-alphabetical layout") {
+h.test("saved order preserves the pinned section and reorders running apps") {
     let snap = SpaceSnapshot(activeSpaceID: 1, windows: [
         win(10, 100, name: "Arc", bundle: "a", spaces: [1]),
         win(20, 200, name: "Zed", bundle: "z", spaces: [1]),
     ])
-    // Default would be Notes (pinned), Arc, Zed. The saved order rearranges all three.
+    // 固定项始终在前；运行区依照保存的顺序排列。
     let apps = DockModel.apps(onCurrentSpace: snap,
                               pinnedHere: ["com.apple.Notes"], pinnedEverywhere: [],
                               order: ["z", "com.apple.Notes", "a"],
                               nameForBundleID: { _ in "Notes" })
-    h.eq(apps.map(\.name), ["Zed", "Notes", "Arc"])
+    h.eq(apps.map(\.name), ["Notes", "Zed", "Arc"])
 }
 
 h.test("apps missing from the saved order keep their default spot and trail behind") {
@@ -847,7 +867,7 @@ h.test("the launcher stays leftmost even when other apps have a saved order") {
     h.eq(apps.map(\.name), ["Applications", "Zed", "Arc"])
 }
 
-h.test("once placed in the saved order, the launcher keeps that slot") {
+h.test("the launcher stays in the pinned section despite an interleaved saved order") {
     let snap = SpaceSnapshot(activeSpaceID: 1, windows: [
         win(10, 100, name: "Arc", bundle: "a", spaces: [1]),
         win(20, 200, name: "Zed", bundle: "z", spaces: [1]),
@@ -855,8 +875,8 @@ h.test("once placed in the saved order, the launcher keeps that slot") {
     let apps = DockModel.apps(onCurrentSpace: snap, pinnedHere: [], pinnedEverywhere: [],
                               order: ["a", DockApp.launcherOrderKey, "z"], includeLauncher: true,
                               nameForBundleID: { _ in nil })
-    h.eq(apps.map(\.name), ["Arc", "Applications", "Zed"])
-    h.eq(apps[1].isLauncher, true)
+    h.eq(apps.map(\.name), ["Applications", "Arc", "Zed"])
+    h.eq(apps[0].isLauncher, true)
 }
 
 print("DockClickAction")
