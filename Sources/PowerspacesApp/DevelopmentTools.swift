@@ -316,25 +316,36 @@ enum DevelopmentTools {
         func check(_ condition: Bool, _ message: String) {
             if condition { print("  ✓ \(message)") } else { print("  ✗ \(message)"); failures += 1 }
         }
-        // 合并模式：N 个窗口 → N 个实心圆点。
+        // 合并模式：N 个窗口 → N 个实心圆点；0 个窗口 → 一个空心胶囊。
         for count in 0...4 {
+            let expected: DockButton.Indicator = count > 0 ? .windows(count) : .emptyApp(vertical: false)
             check(DockButton.indicator(mode: .merged, isLauncher: false,
-                                       isRunning: true, windowCount: count)
-                    == (count > 0 ? .windows(count) : .runningWithoutWindows),
-                  "merged: \(count) window(s) → \(count > 0 ? "\(count) dots" : "one hollow dot")")
+                                       isRunning: true, windowCount: count) == expected,
+                  "merged: \(count) window(s) → \(count > 0 ? "\(count) dots" : "one hollow capsule")")
         }
-        // 已退出（仅因固定而保留）：没有圆点。
+        // 空心胶囊的方向跟随停靠方向。
+        check(DockButton.indicator(mode: .merged, isLauncher: false, isRunning: true,
+                                   windowCount: 0, vertical: true) == .emptyApp(vertical: true),
+              "merged: a left/right dock uses a vertical capsule")
+        // 已退出（仅因固定而保留）：没有标记。
         check(DockButton.indicator(mode: .merged, isLauncher: false,
                                    isRunning: false, windowCount: 0) == .none,
-              "merged: pinned but not running shows no dot")
-        // 拆分模式保持原有单点语义。
+              "merged: pinned but not running shows no marker")
+        // 拆分模式：有窗口时是单个实心圆点。
         check(DockButton.indicator(mode: .split, isLauncher: false,
                                    isRunning: true, windowCount: 3) == .running,
               "split: running shows the single classic dot")
+        // 拆分模式同样用空心胶囊表示「运行但本桌面没有窗口」。
+        check(DockButton.indicator(mode: .split, isLauncher: false,
+                                   isRunning: true, windowCount: 0) == .emptyApp(vertical: false),
+              "split: running with no window here shows a hollow capsule")
+        check(DockButton.indicator(mode: .split, isLauncher: false, isRunning: true,
+                                   windowCount: 0, vertical: true) == .emptyApp(vertical: true),
+              "split: vertical capsule on a left/right dock")
         check(DockButton.indicator(mode: .split, isLauncher: false,
                                    isRunning: false, windowCount: 0) == .none,
-              "split: not running shows no dot")
-        // 启动器不是应用，永远没有指示。
+              "split: not running shows no marker")
+        // 启动器不是应用，永远没有标记。
         check(DockButton.indicator(mode: .merged, isLauncher: true,
                                    isRunning: true, windowCount: 2) == .none,
               "the app launcher never shows an indicator")

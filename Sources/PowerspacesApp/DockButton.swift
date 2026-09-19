@@ -66,30 +66,35 @@ final class DockButton: NSButton {
     enum Indicator: Equatable {
         /// 不显示指示（已退出、或该条目不是应用）。
         case none
-        /// 单个实心圆点：应用在运行。拆分模式与原有行为。
+        /// 单个实心圆点：应用在运行且有窗口（拆分模式，或合并模式的一个窗口）。
         case running
         /// 合并模式：当前桌面有 `count` 个窗口 → `count` 个实心圆点。
         case windows(Int)
-        /// 合并模式：应用在运行但当前桌面没有窗口 → 一个空心圆。
-        case runningWithoutWindows
+        /// 应用在运行但**当前桌面没有窗口** → 一个空心胶囊。
+        /// 两种模式通用：拆分模式同样用它表示「没退出但本桌面没有窗口」。
+        case emptyApp(vertical: Bool)
     }
+
+    /// 空心胶囊沿停靠轴的长度与厚度（点）。比实心圆点长，视觉上一眼可分。
+    private static let capsuleLength: CGFloat = 14
+    private static let capsuleThickness: CGFloat = 4
 
     /// 设置指示标记。合并模式的圆点数量严格等于当前桌面的窗口数；
     /// 无窗口但仍在运行时用空心圆表示「没有完全退出」。
     func setIndicator(_ indicator: Indicator) {
-        let wanted: (count: Int, hollow: Bool)
+        let wanted: (count: Int, hollow: Bool, capsule: Bool)
         switch indicator {
-        case .none: wanted = (0, false)
-        case .running: wanted = (1, false)
-        case .windows(let count): wanted = (max(0, count), false)
-        case .runningWithoutWindows: wanted = (1, true)
+        case .none: wanted = (0, false, false)
+        case .running: wanted = (1, false, false)
+        case .windows(let count): wanted = (max(0, count), false, false)
+        case .emptyApp: wanted = (1, true, true)
         }
         // 圆点总数为 1 时走原有单点路径，保持几何与拆分模式一致。
         while extraDots.count > max(0, wanted.count - 1) {
             extraDots.removeLast().removeFromSuperview()
         }
         if runningDot == nil, wanted.count > 0 {
-            let dot = AdaptiveDockMark(circular: true)
+            let dot = wanted.capsule ? AdaptiveDockMark(capsule: true) : AdaptiveDockMark(circular: true)
             dot.alignment = .center
             dot.setAccessibilityElement(false)
             addSubview(dot)
@@ -99,7 +104,25 @@ final class DockButton: NSButton {
             runningDot?.removeFromSuperview()
             runningDot = nil
         }
+        if wanted.capsule, runningDot?.isHollow == false {
+            // 从实心圆点切到空心胶囊：形状不同，需要换一个标记视图。
+            runningDot?.removeFromSuperview()
+            let dot = AdaptiveDockMark(capsule: true)
+            dot.alignment = .center
+            dot.setAccessibilityElement(false)
+            addSubview(dot)
+            runningDot = dot
+        } else if !wanted.capsule, runningDot?.isHollow == true, wanted.hollow == false {
+            runningDot?.removeFromSuperview()
+            let dot = AdaptiveDockMark(circular: true)
+            dot.alignment = .center
+            dot.setAccessibilityElement(false)
+            addSubview(dot)
+            runningDot = dot
+        }
+        if case .emptyApp(let vertical) = indicator { runningDot?.capsuleIsVertical = vertical }
         runningDot?.isHollow = wanted.hollow
+        // 计数圆点始终是实心圆点。
         while extraDots.count < wanted.count - 1 {
             let dot = AdaptiveDockMark(circular: true)
             dot.alignment = .center
@@ -107,7 +130,7 @@ final class DockButton: NSButton {
             addSubview(dot)
             extraDots.append(dot)
         }
-        for dot in extraDots { dot.isHollow = wanted.hollow }
+        for dot in extraDots { dot.isHollow = false }
         needsLayout = true
     }
 
@@ -116,15 +139,20 @@ final class DockButton: NSButton {
         setIndicator(running ? .running : .none)
     }
 
-    /// 指示标记的纯规则：拆分模式一点表示运行；合并模式圆点数严格等于
-    /// **当前桌面**的窗口数，无窗口但仍在运行时用空心圆表示没有完全退出，
-    /// 已退出（仅因固定而保留）不显示圆点。
+    /// 指示标记的纯规则。
+    ///
+    /// 两种模式共用一条前置规则：**应用在运行、但当前桌面没有窗口**时显示空心胶囊
+    /// （表示没有完全退出）。除此之外，拆分模式一个实心圆点表示运行；合并模式圆点数
+    /// 严格等于**当前桌面**的窗口数。已退出（仅因固定而保留）不显示标记。
+    ///
+    /// `vertical` 决定胶囊方向：顶部/底部停靠为横向，左/右停靠为纵向。
     nonisolated static func indicator(mode: DockWindowDisplayMode, isLauncher: Bool,
-                                      isRunning: Bool, windowCount: Int) -> Indicator {
-        guard !isLauncher else { return .none }
-        guard mode == .merged else { return isRunning ? .running : .none }
-        if windowCount > 0 { return .windows(windowCount) }
-        return isRunning ? .runningWithoutWindows : .none
+                                      isRunning: Bool, windowCount: Int,
+                                      vertical: Bool = false) -> Indicator {
+        guard !isLauncher, isRunning else { return .none }
+        if windowCount == 0 { return .emptyApp(vertical: vertical) }
+        guard mode == .merged else { return .running }
+        return .windows(windowCount)
     }
 
     /// The app this icon stands for. Carried on the button (instead of an index
@@ -452,7 +480,15 @@ final class DockButton: NSButton {
     override func layout() {
         super.layout()
         updateBoxLayer() // bounds are only real once we've been laid out
+        let isVertical = Preferences.shared.barPosition.isVertical
         let size: CGFloat = 4 // 圆点直径固定，不参与图标放大。
+        // 空心胶囊沿停靠轴更长，横轴仍是一个圆点厚，圆角由绘制取短边一半。
+        let capsule = NSRect(x: 0, y: 0,
+                             width: isVertical ? Self.capsuleThickness : Self.capsuleLength,
+                             height: isVertical ? Self.capsuleLength : Self.capsuleThickness)
+        let markSize: (AdaptiveDockMark) -> NSSize = { mark in
+            mark.isHollow ? capsule.size : NSSize(width: size, height: size)
+        }
         let gap = CGFloat(Preferences.shared.runningDotGap)
         let imageRect = cell?.imageRect(forBounds: bounds) ?? bounds
         windowBadge?.place(relativeTo: imageRect, flipped: isFlipped)
@@ -464,19 +500,24 @@ final class DockButton: NSButton {
         let startOffset = -totalLength / 2 + size / 2
         for (index, dot) in allDots.enumerated() {
             let along = startOffset + CGFloat(index) * (size + spacing)
+            let side = markSize(dot)
             switch Preferences.shared.barPosition {
             case .bottom:
-                dot.frame = NSRect(x: imageRect.midX + along - size / 2,
-                    y: isFlipped ? bounds.maxY + gap : -gap - size, width: size, height: size)
+                dot.frame = NSRect(x: imageRect.midX + along - side.width / 2,
+                    y: isFlipped ? bounds.maxY + gap : -gap - side.height,
+                    width: side.width, height: side.height)
             case .top:
-                dot.frame = NSRect(x: imageRect.midX + along - size / 2,
-                    y: isFlipped ? -gap - size : bounds.maxY + gap, width: size, height: size)
+                dot.frame = NSRect(x: imageRect.midX + along - side.width / 2,
+                    y: isFlipped ? -gap - side.height : bounds.maxY + gap,
+                    width: side.width, height: side.height)
             case .left:
-                dot.frame = NSRect(x: -gap - size + crossAxisCenteringOffset,
-                    y: imageRect.midY + along - size / 2, width: size, height: size)
+                dot.frame = NSRect(x: -gap - side.width + crossAxisCenteringOffset,
+                    y: imageRect.midY + along - side.height / 2,
+                    width: side.width, height: side.height)
             case .right:
                 dot.frame = NSRect(x: bounds.maxX + gap + crossAxisCenteringOffset,
-                    y: imageRect.midY + along - size / 2, width: size, height: size)
+                    y: imageRect.midY + along - side.height / 2,
+                    width: side.width, height: side.height)
             }
         }
         if let adaptiveTitle, let cell {

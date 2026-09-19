@@ -1275,14 +1275,15 @@ final class DockPanel: NSPanel {
     private var magnificationRestFrame = NSRect.zero
     /// 该条目在程序坞里显示什么指示标记。
     ///
-    /// 拆分模式维持原有单点语义（运行即一点）。合并模式下圆点数量严格等于
-    /// **当前桌面**的窗口数：0 个窗口但仍在运行时用一个空心圆表示没有完全退出；
-    /// 已退出（仅因固定而保留）不显示任何圆点，沿用现有灰显规则。
+    /// 两种模式共用一条前置规则：运行中但**当前桌面没有窗口** → 一个空心胶囊
+    /// （方向随停靠方向：顶/底横向、左/右纵向）。此外拆分模式一个实心圆点表示运行；
+    /// 合并模式圆点数严格等于当前桌面的窗口数。已退出（仅因固定而保留）不显示标记。
     private func indicator(for app: DockApp) -> DockButton.Indicator {
         DockButton.indicator(mode: Preferences.shared.windowDisplayMode.spaceKitMode,
                              isLauncher: app.isLauncher,
                              isRunning: app.isRunning,
-                             windowCount: app.windowCount)
+                             windowCount: app.windowCount,
+                             vertical: Preferences.shared.barPosition.isVertical)
     }
 
     /// 供窗口避让使用的静止预留：自屏幕物理边起到**可见玻璃外沿**为止的厚度。

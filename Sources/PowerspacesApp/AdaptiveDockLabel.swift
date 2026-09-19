@@ -102,31 +102,68 @@ class AdaptiveDockLabel: NSTextField {
 
 /// 复用文字的背景感知合成，只绘制几何标记，避免字体基线影响圆点位置。
 final class AdaptiveDockMark: AdaptiveDockLabel {
+    /// 标记形状。
+    enum Shape {
+        /// 实心圆点：表示运行中（或合并模式下的窗口计数）。
+        case circle
+        /// 分隔线用的长条。
+        case bar
+        /// 空心胶囊：应用在运行、但当前桌面没有窗口。方向跟随停靠方向，
+        /// 与图标行平行，比空心圆更容易和实心圆点区分。
+        case capsule
+    }
+
     // 几何标记不能继承文字控件左右各 2 点的对齐边距。
     override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
     private let circular: Bool
+    private let shape: Shape
     /// 空心标记：只描边不填充，用于表示「应用在运行、但当前桌面没有窗口」。
     var isHollow = false {
         didSet { if isHollow != oldValue { needsDisplay = true } }
     }
+    /// 胶囊是否沿竖直方向（左右停靠时为真）。
+    var capsuleIsVertical = false {
+        didSet { if capsuleIsVertical != oldValue { needsDisplay = true } }
+    }
+
     init(circular: Bool, gray: Bool = false) {
         self.circular = circular
+        self.shape = circular ? .circle : .bar
         super.init(text: "", font: .systemFont(ofSize: 1), gray: gray)
         setAccessibilityElement(false)
     }
+
+    /// 空心胶囊专用初始化。
+    init(capsule: Bool, gray: Bool = false) {
+        self.circular = false
+        self.shape = .capsule
+        super.init(text: "", font: .systemFont(ofSize: 1), gray: gray)
+        setAccessibilityElement(false)
+    }
+
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
     override func draw(_ dirtyRect: NSRect) {
-        let path = circular ? NSBezierPath(ovalIn: bounds) : NSBezierPath(rect: bounds)
         let color = textColor ?? .secondaryLabelColor
-        guard isHollow else {
+        switch shape {
+        case .circle:
+            let path = NSBezierPath(ovalIn: bounds)
+            guard isHollow else { color.setFill(); path.fill(); return }
+            // 描边宽度按尺寸收敛，避免小圆点被描边糊成一个实心点。
+            color.setStroke()
+            path.lineWidth = max(1, min(bounds.width, bounds.height) * 0.22)
+            path.stroke()
+        case .bar:
             color.setFill()
-            path.fill()
-            return
+            NSBezierPath(rect: bounds).fill()
+        case .capsule:
+            // 圆角半径取短边的一半即得胶囊；长边由调用方按停靠方向给定。
+            let radius = min(bounds.width, bounds.height) / 2
+            let path = NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius)
+            color.setStroke()
+            path.lineWidth = max(1, radius * 0.5)
+            path.stroke()
         }
-        // 描边宽度按尺寸收敛，避免小圆点被描边糊成一个实心点。
-        color.setStroke()
-        path.lineWidth = max(1, min(bounds.width, bounds.height) * 0.22)
-        path.stroke()
     }
 }
 
