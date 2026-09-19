@@ -155,3 +155,12 @@
 - 正式几何输入应来自对应显示器 PS Dock 的静止玻璃区域及距屏幕边缘距离，不能用含放大预留透明区的 NSPanel.frame。将此边界与系统 visibleFrame 求交，避免重复扣除系统 Dock／菜单栏；按显示器 UUID 管理，处理负坐标、上下排列及四向停靠。建议自动隐藏／不显示的 Dock 不预留常驻区域，悬停显隐不推动窗口；该行为需在接入阶段确认体验。
 - 菜单标题的中英文对照不足以证明是系统平铺命令：需要核验完整菜单路径、可用状态及可取得的命令标识／快捷键信息，排除同名自定义项、多窗口布局和全屏命令；未知语言或无法确认的项放行。快捷键不能只靠固定键码假定仍是系统绑定；双击必须尊重实际系统设置。
 - 接入前补齐各入口与还原的成功／失败记录，并逐项验证：连续不同指令及跨窗口输入、动画中拖动／关窗／退出、菜单取消失败与键鼠释放配对、事件 tap 超时恢复、权限缺失、应用尺寸限制、四向多屏和自动隐藏。绿色按钮悬停布局面板、边缘拖拽平铺、第三方改尺寸继续明确列为未覆盖；不引入全局事后追踪纠正。
+
+### AX 原型复验：授权、识别覆盖与几何重复扣减（2026-09-19）
+
+- 实验 App 反复丢失辅助功能授权，根因不是证书不受信任，而是 `codesign` 未带 `--keychain`：身份不在默认搜索列表时签名静默退化为 ad-hoc，cdhash 随每次重建变化，TCC 授权随之失效。`find-identity` 报 `CSSMERR_TP_NOT_TRUSTED` 属误报，带 `--keychain` 指向 `~/Library/Application Support/Powerspaces/Signing/local.keychain-db` 即可正常签名。指定要求稳定为 `identifier "local.ps.axavoidance.stable" and certificate leaf = H"ede24be8…"`，同一身份重签可跨重建保持授权。`sign-experiment.sh` 固化该流程并拒绝 adhoc 结果。
+- 不能用整文件哈希或 CodeDirectory 页哈希判断「只换签名未换代码」：签名嵌入 Mach-O，`codesign` 会把签名槽清零后重算页哈希，ad-hoc 槽与真实身份槽大小不同（832B 对 18912B），填充字节落在首页内，页哈希必然变化。应改用行为判据（入口标识字符串在位、可正常启动并写出 `READY`）。
+- 绿色按钮 AX 形态覆盖率（聚焦窗口、`depthLimit=7`）：Safari、Tabbit、腾讯会议均为 `AXButton/AXFullScreenButton`，上溯 1 级到 `AXWindow`，`identity=true semantic=true`，可识别；微信命中为 `AXWindow/AXStandardWindow`，既无 identity 也非 semantic，父链上不存在按钮节点，属明确不可识别。Finder、Obsidian、Ghostty 因被其它窗口遮挡未能判定。系统设置同属可识别形态，但实测命中查询返回了遮挡窗口的元素，说明授权判定必须校验命中元素的 PID 属于目标应用，遮挡即放行。
+- 命中查询耗时（`CopyElementAtPosition`，各 100 次）：中位数 0.1–1.5ms，但 Safari p99 达 46.7ms、Code 达 48.9ms，更大样本曾出现 55.9ms 与 61.4ms。50ms 硬预算正好压在 p99 上，约 1% 的查询会被误拒而放行原操作。接入时应放宽到 80–100ms，或允许一次重试，并保持「无法确认即放行」的语义。
+- 几何重复扣减已实测确认：主屏 `axVisible` 高 1331pt（系统已扣 109pt），原型 `allowed` 从 frame 底边扣 140pt 后再与 `axVisible` 求交，实际净预留 170pt，多扣 61pt；无 Dock 的副屏无此问题（净预留 140pt）。原型用 `visible.intersection(allowed)` 与既有结论「应与此边界求交，避免重复扣除」自相矛盾，正式实现必须按 Dock 静止玻璃区域相对屏幕物理边的距离计算预留，而不是叠加到 `visibleFrame` 之上。
+- 自动化取证的测试框架教训：`NSRunningApplication.activate` 与随即投递的合成点击之间存在竞态，目标应用未真正前置时，点击会落到恰好覆盖该坐标的其它应用窗口上（本次曾命中正在使用的浏览器窗口）。用合成输入做验证时必须在前台状态确认后才投递，并先校验命中元素的 PID；该竞态是测试框架缺陷，不影响真实用户操作路径。
