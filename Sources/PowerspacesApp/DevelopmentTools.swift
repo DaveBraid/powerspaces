@@ -138,6 +138,7 @@ enum DevelopmentTools {
             prefs.hoverAnimation = 0.12
             if !panel.checkMagnificationInteractions() { failures += 1 }
             if !panel.checkMagnificationPointerRouting() { failures += 1 }
+            if !labeled && position == .bottom && !panel.checkMagnificationBurst() { failures += 1 }
             prefs.hoverAnimation = 0
             panel.close()
         }
