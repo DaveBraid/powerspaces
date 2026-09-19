@@ -76,6 +76,9 @@ public final class WindowLayoutInterceptor {
     private var observers: [pid_t: AXObserver] = [:]
     private var observedWindows: Set<WindowIdentity> = []
     private var snapWorkItems: [WindowIdentity: DispatchWorkItem] = [:]
+    /// 指针是否处于按下状态。拖动/缩放过程中不纠正窗口，避免与用户抢几何；
+    /// 松手后由左键抬起分支立即纠正一次。
+    private var pointerIsDown = false
     private var tap: CFMachPort?
     private var tapSource: CFRunLoopSource?
     private var swallowMouseUp = false
@@ -163,10 +166,12 @@ public final class WindowLayoutInterceptor {
             return handleKey(type, event)
         case .leftMouseUp where swallowMouseUp:
             swallowMouseUp = false
+            pointerIsDown = false
             return nil
         case .leftMouseUp:
-            // 拖动可能在松开后把窗口落在程序坞上，延迟核对一次。
-            scheduleSnapCheck(after: 0.12)
+            // 松手即纠正：拖动过程中不打扰用户，抬起后立刻贴合程序坞。
+            pointerIsDown = false
+            scheduleSnapCheck(after: 0.0)
             return Unmanaged.passUnretained(event)
         case .leftMouseDown:
             return handleMouseDown(event)
@@ -178,6 +183,7 @@ public final class WindowLayoutInterceptor {
     /// 左键按下：分别识别 Option＋绿色按钮、标题栏双击与菜单命令。
     private func handleMouseDown(_ event: CGEvent) -> Unmanaged<CGEvent>? {
         let passthrough = Unmanaged.passUnretained(event)
+        pointerIsDown = true
         // 指针按下即取消进行中的动画，避免用户拖动与动画互相打架。
         let optionClick = event.flags.contains(.maskAlternate)
         let doubleClick = !optionClick && event.getIntegerValueField(.mouseEventClickState) == 2
@@ -769,7 +775,10 @@ extension WindowLayoutInterceptor {
         let callback: AXObserverCallback = { _, _, _, refcon in
             guard let refcon else { return }
             let interceptor = Unmanaged<WindowLayoutInterceptor>.fromOpaque(refcon).takeUnretainedValue()
-            interceptor.scheduleSnapCheck(after: 0.25)
+            // 指针按下期间（拖动/缩放中）不纠正，交给松手后的检查；
+            // 外部工具改尺寸时指针未按下，则尽快纠正以缩短可见闪烁。
+            guard !interceptor.pointerIsDown else { return }
+            interceptor.scheduleSnapCheck(after: 0.04)
         }
         guard AXObserverCreate(identity.pid, callback, &observer) == .success, let observer else { return }
         let refcon = Unmanaged.passUnretained(self).toOpaque()
@@ -801,6 +810,7 @@ extension WindowLayoutInterceptor {
     /// 只对已接管的窗口生效，且只在窗口确实与程序坞预留带重叠时移动，
     /// 因此不会干扰用户刻意的自由摆放之外的窗口。
     func snapOffDock(identity: WindowIdentity) {
+        guard !pointerIsDown else { return }   // 拖动中不打断
         stateLock.lock()
         let snapshot = snapshots[identity]
         stateLock.unlock()
