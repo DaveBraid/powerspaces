@@ -204,7 +204,7 @@
 原型验证通过后已按用户授权接入 PowerSpaces。实现分两层：`Sources/SpaceKit/WindowLayoutGeometry.swift`（纯几何与身份，可单测）与 `Sources/SpaceKit/WindowLayoutInterceptor.swift`（事件 tap、菜单识别、动画事务）；应用侧接线在 `AppDelegate.applyWindowLayoutInterception()`、`DockPanel.layoutReservation()` 与 `Sources/PowerspacesApp/DockReservationSource.swift`，开关为 `windowLayoutInterception`（**默认关闭**）。
 
 - **预留量必须只扣系统尚未扣除的部分**。系统 `visibleFrame` 已为 macOS 自己的 Dock 与菜单栏留出空间，而 PowerSpaces 的程序坞常停在系统 Dock 所占的同一块区域。原型原本「从屏幕物理边扣 reserve，再与 visibleFrame 求交」，在主屏上因交集取严而使预留完全失效（实测可见区 y=30..1361、程序坞厚 78pt，交集后仍为 1331pt 高）。正确做法是逐边比较 `visibleFrame` 相对物理边已让出的量，只额外扣除 `reserve - 已让出`。主屏实测：程序坞 78pt 已在系统让出的 79pt 内 → 不额外预留；设成 140pt 时恰好多让 61pt，与原型阶段量到「多扣 61pt」的数值吻合。
-- **原型阶段的 140pt 是实验设定值，不代表真实程序坞厚度**。正式实现从 `DockPanel.barThickness()` 读取真实玻璃厚度，不用面板 `frame`（后者含悬停放大朝向屏幕内侧的余量）。自动隐藏或收起的 bar 不预留常驻区域。
+- **预留在正式实现中改为量程序坞玻璃在屏幕上的实际内沿**。曾先后试过两种错误做法：只取 `barThickness()`（玻璃厚度，实测 78pt）会让窗口底边正好压在程序坞上；只用系统 `visibleFrame` 已让出的量推断，则完全测不出 PowerSpaces 程序坞（它停在系统让出区域之外）。正确做法是取玻璃视图 `effect` 在屏幕坐标下的实际 frame，换算成距对应屏幕边的距离（实测主屏 119pt：物理底边 1440 − 玻璃内沿 1321）。面板窗口比玻璃更高（含悬停放大余量），不能用面板 `frame`。
 - **坐标约定的坑复现两次**：`CGEvent.post` 的合成事件在事件 tap 中按左上原点读取（与 AX 一致），不要做左下原点翻转；翻转后同一坐标会落到另一个元素上（绿灯翻转投递会命中 `AXGroup` 并被拒，双击翻转投递会让 `event.location.y` 偏出标题栏带）。真机硬件输入不受影响，只有自动化验证需要遵守。
 - 三入口在正式应用内实测通过：Option＋绿灯、标题栏双击、窗口菜单「填充」均产生 `INTERCEPT → RESULT success=true` 并按几何带正确落位。`WindowLayoutDiagnostics`（`/tmp/ps-window-layout.log`）保留为落盘诊断，便于排查「识别到了但没有接管」。
 
