@@ -53,4 +53,55 @@ public enum WindowSpaceMover {
         guard !landed.isEmpty, landed == [targetSpaceID] else { throw MoveError.notMoved }
         return targetSpaceID
     }
+
+    // MARK: - 切回桌面（兜底）
+
+    /// 系统是否提供「切换当前桌面」的私有接口。
+    public static var canSwitchSpace: Bool { setCurrentSpace != nil && activeSpace != nil }
+
+    /// 当前桌面（Space ID）；读取失败返回 nil。
+    public static func currentSpace() -> SpaceID? {
+        guard let activeSpace else { return nil }
+        let value = activeSpace(CGSMainConnectionID())
+        return value == 0 ? nil : SpaceID(value)
+    }
+
+    /// 把当前显示的桌面切回 `spaceID`。
+    ///
+    /// 用途仅为**兜底**：少数应用（如设置了 `NSWindowCollectionBehavior.moveToActiveSpace`
+    /// 的 ChatGPT）会在被激活时自己把桌面拉走，外部无法改写该行为（AX 不暴露
+    /// collection behavior）。搬移完成后若发现桌面被带走，用这里切回用户原本所在桌面。
+    /// 代价是一次可见的桌面闪动，因此只在确实被带走时才调用。
+    @discardableResult
+    public static func switchBack(to spaceID: SpaceID) -> Bool {
+        guard let setCurrentSpace,
+              let display = mainDisplayIdentifier() else { return false }
+        setCurrentSpace(CGSMainConnectionID(), display, UInt64(spaceID))
+        return true
+    }
+
+    private typealias GetActiveSpace = @convention(c) (CGSConnectionID) -> UInt64
+    private typealias SetCurrentSpace = @convention(c) (CGSConnectionID, CFString, UInt64) -> Void
+    private typealias CopyDisplaySpaces = @convention(c) (CGSConnectionID) -> Unmanaged<CFArray>?
+
+    private static let activeSpace: GetActiveSpace? = symbol("CGSGetActiveSpace")
+    private static let setCurrentSpace: SetCurrentSpace? = symbol("CGSManagedDisplaySetCurrentSpace")
+    private static let copyDisplaySpaces: CopyDisplaySpaces? = symbol("CGSCopyManagedDisplaySpaces")
+
+    /// 主显示器的标识符（每次读取，显示器热插拔后会变，不能缓存）。
+    private static func mainDisplayIdentifier() -> CFString? {
+        guard let copyDisplaySpaces,
+              let displays = copyDisplaySpaces(CGSMainConnectionID())?
+                  .takeRetainedValue() as? [[String: Any]],
+              let identifier = displays.first?["Display Identifier"] as? String else { return nil }
+        return identifier as CFString
+    }
+
+    /// 从 SkyLight 动态取符号；系统移除时返回 nil，调用方走降级路径。
+    private static func symbol<T>(_ name: String) -> T? {
+        guard let handle = dlopen(
+            "/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY),
+            let pointer = dlsym(handle, name) else { return nil }
+        return unsafeBitCast(pointer, to: T.self)
+    }
 }

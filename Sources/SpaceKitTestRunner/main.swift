@@ -1761,7 +1761,9 @@ h.test("an app that only lives on another desktop is moved when activated") {
         isEnabled: { true },
         spaceRecentlyChanged: { false },
         available: { true },
-        move: { pid, space, _ in moved.append((pid, space)); return space })
+        move: { pid, space, _ in moved.append((pid, space)); return space },
+        currentSpace: { 1 },            // 桌面未被应用带走
+        settleDelay: 0)
     let outcome = mover.consider(
         .init(activeSpaceID: 1, target: AppTarget(bundleID: "demo.one", name: "Demo"),
               pid: 111, confirmSpaces: { _ in [] }),
@@ -1826,6 +1828,67 @@ h.test("the feature stays inert when disabled or when the API is missing") {
     h.eq(missingAPI.consider(input, snapshot: snapshot), .unavailable,
          "degrades quietly when the system lacks the symbol")
     h.ok(!called, "neither case touches the mover")
+}
+
+h.test("the fallback brings the desktop back when an app hijacks it") {
+    // moveToActiveSpace 类应用（如 ChatGPT）会在激活时把桌面拉走：搬移已完成，
+    // 这里必须把显示切回原桌面，并如实报告发生过回切。
+    let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: [
+        dwin(11, 111, name: "Demo", bundle: "demo.one",
+             rect: CGRect(x: 10, y: 10, width: 400, height: 300), onscreen: false, spaces: [2]),
+    ])
+    var display: SpaceID = 2          // 应用把桌面抢到了 2
+    var switchedBack: [SpaceID] = []
+    let mover = ActivatedAppMover(
+        isEnabled: { true }, spaceRecentlyChanged: { false }, available: { true },
+        move: { _, space, _ in space },
+        currentSpace: { display },
+        switchBack: { switchedBack.append($0); display = $0; return true },
+        settleDelay: 0,
+        schedule: { _, work in work() })
+    h.eq(mover.consider(
+        .init(activeSpaceID: 1, target: AppTarget(bundleID: "demo.one", name: "Demo"),
+              pid: 111, confirmSpaces: { _ in [] }),
+        snapshot: snapshot), .movedAndSwitchedBack, "reports that it switched the desktop back")
+    h.eq(switchedBack, [1], "switches back to the desktop the user was on")
+}
+
+h.test("no switch-back when the desktop was not hijacked") {
+    let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: [
+        dwin(11, 111, name: "Demo", bundle: "demo.one",
+             rect: CGRect(x: 10, y: 10, width: 400, height: 300), onscreen: false, spaces: [2]),
+    ])
+    var switchedBack: [SpaceID] = []
+    let mover = ActivatedAppMover(
+        isEnabled: { true }, spaceRecentlyChanged: { false }, available: { true },
+        move: { _, space, _ in space },
+        currentSpace: { 1 },                       // 桌面没被带走
+        switchBack: { switchedBack.append($0); return true },
+        settleDelay: 0)
+    h.eq(mover.consider(
+        .init(activeSpaceID: 1, target: AppTarget(bundleID: "demo.one", name: "Demo"),
+              pid: 111, confirmSpaces: { _ in [] }),
+        snapshot: snapshot), .moved, "a plain move stays a plain move")
+    h.ok(switchedBack.isEmpty, "never touches the desktop when nothing was hijacked")
+}
+
+h.test("a failed move still performs no desktop switch") {
+    let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: [
+        dwin(11, 111, name: "Demo", bundle: "demo.one",
+             rect: CGRect(x: 10, y: 10, width: 400, height: 300), onscreen: false, spaces: [2]),
+    ])
+    var switchedBack = false
+    let mover = ActivatedAppMover(
+        isEnabled: { true }, spaceRecentlyChanged: { false }, available: { true },
+        move: { _, _, _ in throw WindowSpaceMover.MoveError.notMoved },
+        currentSpace: { 2 },
+        switchBack: { _ in switchedBack = true; return true },
+        settleDelay: 0)
+    h.eq(mover.consider(
+        .init(activeSpaceID: 1, target: AppTarget(bundleID: "demo.one", name: "Demo"),
+              pid: 111, confirmSpaces: { _ in [] }),
+        snapshot: snapshot), .notMoved, "a refused move stays notMoved")
+    h.ok(!switchedBack, "搬不动时连桌面也不碰")
 }
 
 h.test("a failed move is reported and never retried") {

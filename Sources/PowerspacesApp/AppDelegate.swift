@@ -76,6 +76,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .notMoved:
             // 搬不动就什么都不做：不跳桌面、不关窗口、不重试。
             Log.error("Activated-app move failed for \(target.bundleID ?? target.name ?? "?")")
+        case .movedAndSwitchedBack:
+            // 搬移完成，但应用自己抢了桌面，已切回用户原本所在的桌面（一次可见闪动）。
+            Log.debug("Activated-app move: \(target.bundleID ?? target.name ?? "?") — switched the desktop back")
         case .disabled, .unavailable, .spaceChanged, .alreadyHere:
             break
         }
