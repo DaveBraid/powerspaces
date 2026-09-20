@@ -367,6 +367,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dock.onFullscreenSpaceIDs = { [weak self] in
             self?.provider.fullscreenSpaceIDs() ?? []
         }
+        dock.onPreviewHasContent = { [weak self] app, space, completion in
+            guard let self, let pid = app.pid else { completion(false); return }
+            let launcher = UnsafeTransfer(self.launcher)
+            let reply = UnsafeTransfer(completion)
+            self.launcherQueue.async {
+                let has = (try? launcher.value.previewWindows(
+                    pid: pid, bundleID: app.bundleID, displayUUID: displayUUID,
+                    spaceUUID: space, includeHidden: false))?.isEmpty == false
+                DispatchQueue.main.async { reply.value(has) }
+            }
+        }
         dock.onPreviewWindows = { [weak self] app, space, completion in
             guard let self, let pid = app.pid else { completion([]); return }
             let launcher = UnsafeTransfer(self.launcher)

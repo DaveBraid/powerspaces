@@ -58,12 +58,40 @@ private final class FullscreenBadge: NSView {
     required init?(coder: NSCoder) { nil }
 }
 
+/// 预览卡片下方的悬停高亮：不接管鼠标，只负责画描边与轻微着色。
+///
+/// 独立子视图而不是直接画在按钮上：卡片的 `hitTest` 会把点全部收给按钮，
+/// 高亮只需跟随尺寸，不必参与命中判定。
+private final class PreviewHighlightView: NSView {
+    var isActive = false {
+        didSet { if isActive != oldValue { needsDisplay = true } }
+    }
+    /// 供自检模拟悬停，避免依赖真实鼠标（合成移动不足以触发跟踪区域）。
+    func setActiveForCheck(_ active: Bool) { isActive = active }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func draw(_ dirtyRect: NSRect) {
+        guard isActive else { return }
+        let radius: CGFloat = 10
+        // 轻微着色 + 强调色描边：能看出"这张会被点击"，又不遮住缩略图。
+        NSColor.controlAccentColor.withAlphaComponent(0.10).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius).fill()
+        NSColor.controlAccentColor.withAlphaComponent(0.85).setStroke()
+        let outline = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1),
+                                   xRadius: radius - 1, yRadius: radius - 1)
+        outline.lineWidth = 2
+        outline.stroke()
+    }
+}
+
 private final class HoverPreviewCard: NSButton {
     let thumbnail = NSImageView()
     let caption = NSTextField(labelWithString: "")
     let placeholder = NSTextField(wrappingLabelWithString: "")
     /// 全屏窗口才有；置于缩略图右下角，平时隐藏。
     let fullscreenBadge = FullscreenBadge(frame: .zero)
+    /// 悬停在本卡片上时的高亮。
+    private let highlight = PreviewHighlightView(frame: .zero)
+    private var tracking: NSTrackingArea?
     var select: (() -> Void)?
     init(title: String) {
         super.init(frame: NSRect(x: 0, y: 0, width: 220, height: 166))
@@ -80,11 +108,25 @@ private final class HoverPreviewCard: NSButton {
         placeholder.alignment = .center
         placeholder.textColor = .secondaryLabelColor
         fullscreenBadge.isHidden = true
-        for view in [thumbnail, caption, placeholder, fullscreenBadge] { addSubview(view) }
+        for view in [highlight, thumbnail, caption, placeholder, fullscreenBadge] { addSubview(view) }
     }
     required init?(coder: NSCoder) { nil }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        // 覆盖整张卡片：鼠标进入即高亮，示意"点这里会聚焦这个窗口"。
+        let area = NSTrackingArea(rect: bounds,
+                                  options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        tracking = area
+    }
+    override func mouseEntered(with event: NSEvent) { highlight.isActive = true }
+    override func mouseExited(with event: NSEvent) { highlight.isActive = false }
+
     override func layout() {
         super.layout()
+        highlight.frame = bounds
         thumbnail.frame = NSRect(x: 8, y: 28, width: bounds.width - 16, height: bounds.height - 36)
         placeholder.frame = NSRect(x: 12, y: bounds.midY - 24, width: bounds.width - 24, height: 48)
         caption.frame = NSRect(x: 8, y: 7, width: bounds.width - 16, height: 17)
@@ -192,7 +234,15 @@ private final class HoverPreviewCard: NSButton {
             showMessage("Enable Screen Recording in Settings → Effects for window previews.")
             return
         }
-        loadWindows()
+        // 先问一句有没有可预览的窗口：没有就**根本不弹面板**。
+        // 否则会先弹出"Loading…"、查到空再关闭，用户看到一次闪烁。
+        guard let owner, let app else { close(); return }
+        let token = generation
+        owner.onPreviewHasContent?(app, space) { [weak self] hasContent in
+            guard let self, self.generation == token else { return }
+            guard hasContent else { self.close(); return }
+            self.loadWindows()
+        }
     }
 
     /// 查询在已有启动队列上执行；回调仅在会话与桌面仍有效时更新 UI。
@@ -348,6 +398,19 @@ private final class HoverPreviewCard: NSButton {
             let noFocus = !panel.canBecomeKey && !panel.canBecomeMain && !panel.isKeyWindow
                 && panel.acceptsMouseMovedEvents
             let allCards = preview.cards.count == 8
+            // 悬停高亮：卡片必须装了一个高亮子视图，并能随悬停开关。
+            // 真实鼠标无法在自检里模拟（合成移动不触发跟踪区域），因此直接驱动状态，
+            // 锁定的是"卡片确实持有高亮且可切换"这一事实。
+            let highlights = preview.cards.values.compactMap { card in
+                card.subviews.compactMap { $0 as? PreviewHighlightView }.first
+            }
+            let highlighting = highlights.count == preview.cards.count
+                && highlights.allSatisfy { view in
+                    view.setActiveForCheck(true); let on = view.isActive
+                    view.setActiveForCheck(false); let off = view.isActive
+                    return on && !off
+                }
+            passed = passed && highlighting
             let oldGeneration = preview.generation
             weak var releasedImage: NSImage?
             autoreleasepool {

@@ -17,6 +17,11 @@ final class DockPanel: NSPanel {
     }
 
     var onPreviewWindows: ((DockApp, String, @escaping ([WindowInfo]?) -> Void) -> Void)?
+    /// 悬停阈值到点后先问一句"这个应用有可预览的窗口吗"。
+    ///
+    /// 目的是**不要为了空结果先弹一个面板再关掉**（实测会闪一下"Loading…"）。
+    /// 查询在既有的启动队列上执行，代价与随后的预览查询相同量级。
+    var onPreviewHasContent: ((DockApp, String, @escaping (Bool) -> Void) -> Void)?
     /// 当前所有全屏 Space；预览据此标记全屏窗口（与 `WindowPreview` 的筛选保持同一来源）。
     var onFullscreenSpaceIDs: (() -> Set<SpaceID>)?
     /// 点击全屏窗口的预览：允许切换到它所在的 Space（与共享全屏分区同一条路径）。
