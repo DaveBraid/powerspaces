@@ -67,6 +67,10 @@ final class DockPanel: NSPanel {
     private var unifiedTextColor: NSColor = .white
     /// 迟滞用的上一次判定，避免临界亮度来回翻转。
     private var unifiedUsesWhite: Bool?
+    /// 整块程序坞统一的**标记墨色**（跟随背景亮度）；圆点/胶囊/分割线共用。
+    private var unifiedInkColor: NSColor = .white
+    /// 墨色迟滞的上一次判定，避免临界亮度来回翻转。
+    private var unifiedUsesDarkInk: Bool?
     /// 旧系统的染色与降低透明度覆盖层；Liquid Glass 使用原生 tintColor。
     private let tintOverlay = PassthroughView()
     /// The persistent UUID of the desktop the bar is currently showing on, set by
@@ -1319,7 +1323,14 @@ final class DockPanel: NSPanel {
         } else {
             unifiedUsesWhite = nil
         }
-        guard color != unifiedTextColor else { return }
+        // 标记墨色跟随背景（原版做法）：即使标题是手动配色，指示灯也照常跟随。
+        let ink = AdaptiveDockLabel.inkColor(luminance: luminance, previous: unifiedUsesDarkInk)
+        if luminance.isFinite, (0...1).contains(luminance) {
+            unifiedUsesDarkInk = (ink == AdaptiveDockLabel.darkInk)
+        }
+        let inkChanged = ink != unifiedInkColor
+        unifiedInkColor = ink
+        guard color != unifiedTextColor || inkChanged else { return }
         unifiedTextColor = color
         propagateUnifiedTextColor()
     }
@@ -1327,8 +1338,10 @@ final class DockPanel: NSPanel {
     /// 把当前统一颜色下发给视图树里所有自适应元素（新增的元素也会在重建时收到）。
     private func propagateUnifiedTextColor() {
         func visit(_ view: NSView) {
-            if let adaptive = view as? AdaptiveDockLabel {
-                adaptive.applyUnifiedTextColor(unifiedTextColor)
+            if let mark = view as? AdaptiveDockMark {
+                mark.applyInkColor(unifiedInkColor)          // 几何标记：跟随背景的墨色
+            } else if let adaptive = view as? AdaptiveDockLabel {
+                adaptive.applyUnifiedTextColor(unifiedTextColor)  // 标题：黑白自适应
             }
             for child in view.subviews { visit(child) }
         }

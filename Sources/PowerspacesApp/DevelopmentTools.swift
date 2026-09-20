@@ -638,10 +638,32 @@ enum DevelopmentTools {
         func check(_ condition: Bool, _ label: String) {
             if condition { print("  ok   \(label)") } else { print("  FAIL \(label)"); failures += 1 }
         }
-        // 几何标记（圆点 / 胶囊 / 分割线）固定白色，且与文字标题的取色互不影响。
-        for shape in [AdaptiveDockMark.Shape.circle, .capsule, .bar] {
-            check(AdaptiveDockMark.inkColor(for: shape) == .white, "\(shape) 固定为纯白")
+        // 几何标记（圆点 / 胶囊 / 分割线）跟随背景亮度，两档 + 迟滞。
+        // 注意：NSColor.white 属于灰阶色彩空间，直接读 brightnessComponent 会抛异常，
+        // 因此一律先转换到 sRGB 再比较（这一条是被本检查自己抓出来的）。
+        func grey(_ color: NSColor) -> CGFloat {
+            (color.usingColorSpace(.sRGB) ?? color).redComponent
         }
+        let dark = grey(AdaptiveDockLabel.darkInk)
+        check(grey(AdaptiveDockLabel.inkColor(luminance: 0.86)) == dark,
+              "浅色玻璃（实测亮度 0.86）用深墨")
+        check(grey(AdaptiveDockLabel.inkColor(luminance: 0.4)) == 1, "深色背景用白墨")
+        check(grey(AdaptiveDockLabel.inkColor(luminance: 0.95)) == dark,
+              "玻璃变纯白（0.95）仍用深墨")
+        // 切换点在分离度最差的中灰（0.5），迟滞 0.45 / 0.55。
+        check(grey(AdaptiveDockLabel.inkColor(luminance: 0.49, previous: true)) == dark,
+              "迟滞：深墨状态下 0.49 不翻白")
+        check(grey(AdaptiveDockLabel.inkColor(luminance: 0.49, previous: false)) == 1,
+              "白墨状态下 0.49 保持白")
+        check(grey(AdaptiveDockLabel.inkColor(luminance: 0.56, previous: false)) == dark,
+              "白墨状态下 0.56 翻深墨")
+        // 两档都必须与背景有足够对比（连续灰阶在中亮度会失去对比，所以才用两档）。
+        for value in stride(from: 0.0, through: 1.0, by: 0.1) {
+            let ink = grey(AdaptiveDockLabel.inkColor(luminance: value))
+            let separation = abs(ink - CGFloat(value))
+            check(separation >= 0.39, String(format: "亮度 %.1f 的墨色分离度 %.2f", value, separation))
+        }
+        check(grey(AdaptiveDockLabel.inkColor(luminance: .nan)) == 1, "采样失败回退为白")
         // 标题仍跟随玻璃明暗（那是可读性需要，与指示灯无关）。
         check(AdaptiveDockLabel.unifiedTextColor(luminance: 0.9, previous: nil) == .black,
               "标题在亮背景上仍用黑")

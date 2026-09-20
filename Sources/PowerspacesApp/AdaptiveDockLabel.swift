@@ -11,6 +11,8 @@ class AdaptiveDockLabel: NSTextField {
     private var usesWhite: Bool?
     /// 面板下发的统一颜色；非 nil 时优先于逐元素采样。
     private var forcedTextColor: NSColor?
+    /// 面板下发的标记墨色（跟随背景）；几何标记使用它而不是文字色。
+    fileprivate var forcedInkColor: NSColor?
 
     /// 面板层统一判定使用：按背景亮度选纯黑或纯白。
     ///
@@ -21,6 +23,30 @@ class AdaptiveDockLabel: NSTextField {
         guard luminance.isFinite, (0...1).contains(luminance) else { return .white }
         let white = previous.map { $0 ? luminance < 0.57 : luminance < 0.43 } ?? (luminance < 0.5)
         return white ? .white : .black
+    }
+
+    /// 由背景亮度求墨色：**两档 + 迟滞**，与原版程序坞一致。
+    ///
+    /// 为什么不用连续灰阶：中亮度背景下，任何灰都与背景分离不足（数学上无解），
+    /// 指标会"消失"。原版同样是两档——浅色玻璃上近纯黑、玻璃变纯白时转灰。
+    /// - Parameter previous: 上一次的判定，用于迟滞，避免临界亮度来回翻转。
+    static func inkColor(luminance: Double, previous: Bool? = nil) -> NSColor {
+        guard luminance.isFinite, (0...1).contains(luminance) else { return .white }
+        let value = min(max(luminance, 0), 1)
+        // 切换点放在**分离度最差处**（中灰 ≈0.5）：往亮走用深墨、往暗走用白墨，
+        // 这样最差分离度仍有 0.40，任何背景下指标都看得见。
+        // 迟滞：已在深墨状态时要更暗才翻回白墨（0.45 vs 0.55），避免临界闪烁。
+        let useDark = previous.map { $0 ? value > 0.45 : value > 0.55 } ?? (value > 0.5)
+        return useDark ? darkInk : .white
+    }
+
+    /// 浅色背景用的深墨；比纯黑略浅，贴近原版在浅色玻璃上的观感。
+    static let darkInk = NSColor(srgbRed: 0.10, green: 0.10, blue: 0.10, alpha: 1)
+
+    /// 面板下发标记墨色（圆点 / 胶囊 / 分割线共用同一个值，保证整块玻璃上一致）。
+    func applyInkColor(_ color: NSColor?) {
+        forcedInkColor = color
+        needsDisplay = true
     }
 
     /// 面板下发统一颜色；传入后停止逐元素采样，保证同一块玻璃上只有一个颜色。
@@ -173,15 +199,15 @@ final class AdaptiveDockMark: AdaptiveDockLabel {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// 几何标记的固定颜色：纯白，不随背景变化。
+    /// 几何标记的墨色：**跟随背景亮度**，与原版程序坞一致。
     ///
-    /// 逐元素采样会让圆点（背后是图标映上的亮玻璃）与分割线（1pt 细线采到暗色）
-    /// 得出不同颜色；整块统一判定又会让整套指示灯随背景在黑白间切换。固定白色
-    /// 既保证统一，也符合程序坞的视觉习惯。
-    static func inkColor(for shape: Shape) -> NSColor { .white }
+    /// 判定由面板按**整块**玻璃做一次再下发（`applyUnifiedTextColor`）：逐元素各自采样
+    /// 会让圆点（背后是图标映上的亮玻璃）与分割线（1pt 细线采到暗色）得出不同颜色。
+    /// 亮度→墨色的映射见 `AdaptiveDockLabel.inkColor(luminance:)`。
+    fileprivate static let defaultInk = NSColor.white
 
     override func draw(_ dirtyRect: NSRect) {
-        let color = Self.inkColor(for: shape)
+        let color = forcedInkColor ?? Self.defaultInk
         switch shape {
         case .circle:
             let path = NSBezierPath(ovalIn: bounds)
