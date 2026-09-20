@@ -65,6 +65,34 @@ case "list-windows":
         }
     } catch { fail("\(error)") }
 
+case "preview":
+    // 诊断：打印某个应用在当前显示器下会进入悬停预览的窗口，
+    // 用于验证"全屏窗口也应出现在预览里"（含隐藏 Space 的全屏窗口）。
+    let positionals = positional(rest)
+    guard let bundle = positionals.first else { fail("usage: powerspaces preview <bundleID>") }
+    do {
+        let provider = CGSSpaceProvider()
+        let displays = provider.displays()
+        let active = displays.first { $0.isActive } ?? displays.first
+        guard let display = active else { fail("no display") }
+        let snapshot = try provider.snapshot()
+        // 按 bundle 找到 pid，再走与应用完全相同的纯函数（pid 是必需的筛选条件）。
+        guard let pid = snapshot.windows.first(where: { $0.bundleID == bundle })?.pid else {
+            fail("no running window found for \(bundle)")
+        }
+        let windows = WindowPreview.windows(
+            pid: pid, bundleID: bundle, snapshot: snapshot, display: display,
+            allDisplays: displays.map(\.bounds), fullscreenSpaceIDs: provider.fullscreenSpaceIDs())
+        print("active space \(snapshot.activeSpaceID)  fullscreen spaces "
+              + "\(provider.fullscreenSpaceIDs().sorted())  display \(display.displayUUID.prefix(8))")
+        print("预览窗口 \(windows.count) 个:")
+        for w in windows {
+            let full = WindowPreview.isFullscreen(w, fullscreenSpaceIDs: provider.fullscreenSpaceIDs())
+            print("  win \(w.windowID)  spaces=\(w.spaceIDs)  onscreen=\(w.isOnscreen)"
+                  + "\(full ? "  [全屏]" : "")")
+        }
+    } catch { fail("\(error)") }
+
 case "decide", "open":
     let positionals = positional(rest)
     guard let appArg = positionals.first else { fail("usage: powerspaces \(command) <app> [--new]") }

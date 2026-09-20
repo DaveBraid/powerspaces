@@ -364,6 +364,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// screen a new window opens on all target *this* dock's desktop rather than
     /// the active one.
     private func configure(_ dock: DockPanel, displayUUID: String) {
+        dock.onFullscreenSpaceIDs = { [weak self] in
+            self?.provider.fullscreenSpaceIDs() ?? []
+        }
         dock.onPreviewWindows = { [weak self] app, space, completion in
             guard let self, let pid = app.pid else { completion([]); return }
             let launcher = UnsafeTransfer(self.launcher)
@@ -378,6 +381,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         displayUUID: displayUUID, spaceUUID: space, includeHidden: includeHidden)
                 }
                 DispatchQueue.main.async { reply.value(windows) }
+            }
+        }
+        dock.onPreviewSelectFullscreen = { [weak self] app, windowID in
+            guard let pid = app.pid else { return }
+            self?.runLauncher {
+                // 与共享全屏分区同一条路径：用户明确点击才允许切到全屏所在 Space。
+                _ = try? $0.focusFullscreenWindow(windowID: windowID, pid: pid, target: app.target)
             }
         }
         dock.onPreviewSelect = { [weak self] app, windowID, space in

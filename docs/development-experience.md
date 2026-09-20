@@ -582,3 +582,33 @@ outcome=moved                                                  ← 同步搬移�
 
 **方法论**：定位 UI 弹出问题时，**先截图确认看到的到底是菜单的哪一部分**（顶部还是底部、是否真的是滚动），再动代码。我第二轮就是把"菜单底部露出了 3 项"当成了"菜单只有 3 项"。
 
+
+### 全屏窗口纳入悬停预览（2026-09-20）
+
+**现象**：pin 住的应用（`pins.json` 的 `[all desktops]`）若有全屏窗口，悬停图标看不到预览，显示"不在此桌面"。
+
+**根因（两处叠加，缺一不可）**：
+
+1. `DockModel.fullscreenItems` 生成全屏分区时**排除已 pin 的应用**（`!(pinnedBundleIDs.contains)`）——所以 pin 的应用没有独立的全屏条目。
+2. 普通条目的预览走 `WindowPreview.windows`，**只按当前桌面的 Space 筛选**。全屏在 macOS 里独占一个 Space，于是被排除，预览列表为空 → 显示"不在此桌面"。
+
+**修法**：
+
+- `WindowPreview.windows` 增加 `fullscreenSpaceIDs` 参数（调用方注入 `provider.fullscreenSpaceIDs()`）：除当前桌面窗口外，**全屏 Space 的窗口也纳入**。参数带默认值，旧调用方行为不变（有单测锁定）。
+- 新增 `WindowPreview.isFullscreen(_:fullscreenSpaceIDs:)` 作为唯一判定，卡片标记与点击分支共用。
+- 截图改为 `allowOffscreen: true`：全屏 Space 不可见，不允许离屏就只会在卡片上写 "Window is on another desktop"，正是本功能要消除的情况。该开关同时启用 `ignoreGlobalClipSingleWindow`，离屏也能拿到完整内容。
+- 预览卡片右上角新增 **Liquid Glass 胶囊包裹应用图标**（macOS 26+ 用 `NSGlassEffectView`，旧系统回退 `NSVisualEffectView` + 圆角）标识全屏窗口；点击走 `focusFullscreenWindow`（允许切到全屏所在 Space，与共享全屏分区同一条路径），而不是普通预览的"只聚焦、不切桌面"。
+
+**新增诊断命令**：`powerspaces preview <bundleID>` 打印某应用会进入预览的窗口（含全屏标记），避免靠反复悬停验证。实测：
+
+```
+$ powerspaces preview com.microsoft.VSCode
+active space 3  fullscreen spaces [489]  display D2D54920
+预览窗口 2 个:
+  win 19424  spaces=[489]  onscreen=false  [全屏]
+  win 27461  spaces=[489]  onscreen=false  [全屏]
+```
+
+修复前这两个窗口都被排除（列表为空 → "不在此桌面"）。
+
+**未完成验证**：预览浮层的**实机渲染**（玻璃徽章外观）我没能确认——悬停需要真实鼠标移动，合成 `mouseMoved` 不足以触发；computer-use 也列不到 PS（accessory 应用、无标准窗口，`COMPUTER_APP_NOT_FOUND`）。数据源、判定逻辑与编译路径已验证，**渲染外观需人工悬停确认**。

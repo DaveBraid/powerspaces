@@ -11,10 +11,54 @@ private final class HoverPreviewPanel: NSPanel {
 }
 
 /// 缩略图按钮只在点击时执行窗口操作；标题、占位与图片由同一次展开更新。
+/// 预览卡片右上角的「全屏」标记：Liquid Glass 胶囊包裹应用图标。
+///
+/// 用于区分全屏窗口与当前桌面窗口——全屏窗口独占一个 Space，点它需要跳到那个 Space。
+private final class FullscreenBadge: NSView {
+    private let icon = NSImageView()
+    /// macOS 26+ 的玻璃材质；旧系统回退为半透明深色胶囊。
+    private func makeGlass() -> NSView {
+        if #available(macOS 26.0, *) {
+            let view = NSGlassEffectView()
+            view.style = .regular
+            view.cornerRadius = 9
+            return view
+        }
+        let blur = NSVisualEffectView()
+        blur.material = .hudWindow
+        blur.blendingMode = .withinWindow
+        blur.state = .active
+        blur.wantsLayer = true
+        blur.layer?.cornerRadius = 9
+        blur.layer?.masksToBounds = true
+        return blur
+    }
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        let surface = makeGlass()
+        surface.frame = bounds
+        surface.autoresizingMask = [.width, .height]
+        addSubview(surface)
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        icon.frame = bounds.insetBy(dx: 4, dy: 4)
+        icon.autoresizingMask = [.width, .height]
+        addSubview(icon)
+        setAccessibilityElement(false)
+        toolTip = L10n.string("Full screen")
+    }
+    required init?(coder: NSCoder) { nil }
+    func configure(appIcon: NSImage?) {
+        icon.image = appIcon
+    }
+}
+
 private final class HoverPreviewCard: NSButton {
     let thumbnail = NSImageView()
     let caption = NSTextField(labelWithString: "")
     let placeholder = NSTextField(wrappingLabelWithString: "")
+    /// 全屏窗口才有；平时隐藏。
+    let fullscreenBadge = FullscreenBadge(frame: .zero)
     var select: (() -> Void)?
     init(title: String) {
         super.init(frame: NSRect(x: 0, y: 0, width: 220, height: 166))
@@ -30,7 +74,8 @@ private final class HoverPreviewCard: NSButton {
         caption.font = .systemFont(ofSize: 12)
         placeholder.alignment = .center
         placeholder.textColor = .secondaryLabelColor
-        for view in [thumbnail, caption, placeholder] { addSubview(view) }
+        fullscreenBadge.isHidden = true
+        for view in [thumbnail, caption, placeholder, fullscreenBadge] { addSubview(view) }
     }
     required init?(coder: NSCoder) { nil }
     override func layout() {
@@ -38,6 +83,11 @@ private final class HoverPreviewCard: NSButton {
         thumbnail.frame = NSRect(x: 8, y: 28, width: bounds.width - 16, height: bounds.height - 36)
         placeholder.frame = NSRect(x: 12, y: bounds.midY - 24, width: bounds.width - 24, height: 48)
         caption.frame = NSRect(x: 8, y: 7, width: bounds.width - 16, height: 17)
+        // 右上角，压在缩略图之上。
+        let side: CGFloat = 26
+        fullscreenBadge.frame = NSRect(x: bounds.maxX - side - 10,
+                                       y: thumbnail.frame.maxY - side - 10,
+                                       width: side, height: side)
     }
     override func hitTest(_ point: NSPoint) -> NSView? { bounds.contains(convert(point, from: superview)) ? self : nil }
     @objc private func clicked() { select?() }
@@ -150,7 +200,9 @@ private final class HoverPreviewCard: NSButton {
             guard let windows else { self.showMessage("Window preview unavailable"); return }
             guard !windows.isEmpty else { self.showMessage("No windows on this desktop"); return }
             self.show(windows, app: app)
-            WindowThumbnailService.shared.capture(windows, allowOffscreen: app.isFullscreenItem) { [weak self, weak owner] id, title, image, error in
+            // 一律允许离屏：全屏窗口所在的 Space 不可见，不允许离屏就只会在卡片上写
+            // "Window is on another desktop"，而这正是本功能要消除的情况。
+            WindowThumbnailService.shared.capture(windows, allowOffscreen: true) { [weak self, weak owner] id, title, image, error in
                 guard let self, owner != nil, self.generation == token, let card = self.cards[id] else { return }
                 if let title, !title.isEmpty {
                     card.caption.stringValue = title
@@ -209,8 +261,18 @@ private final class HoverPreviewCard: NSButton {
             width: vertical ? cardSize.width : cardSize.width * CGFloat(windows.count),
             height: vertical ? cardSize.height * CGFloat(windows.count) : cardSize.height))
         let token = generation, space = self.space
+        // 全屏窗口独立标记：需要跳到它的 Space，因此卡片右上角加一层玻璃图标。
+        let fullscreenSpaces = owner.onFullscreenSpaceIDs?() ?? []
+        var fullscreenWindowIDs: Set<CGWindowID> = []
+        let appIcon = NSRunningApplication(processIdentifier: app.pid ?? 0)?.icon
         for (index, info) in windows.enumerated() {
             let card = HoverPreviewCard(title: app.name + " · " + String(index + 1))
+            if WindowPreview.isFullscreen(info, fullscreenSpaceIDs: fullscreenSpaces) {
+                card.fullscreenBadge.isHidden = false
+                card.fullscreenBadge.configure(appIcon: appIcon)
+                card.setAccessibilityLabel(app.name + " · " + L10n.string("Full screen"))
+                fullscreenWindowIDs.insert(info.windowID)
+            }
             card.frame = NSRect(x: vertical ? 0 : CGFloat(index) * cardSize.width,
                                 y: vertical ? CGFloat(windows.count - index - 1) * cardSize.height : 0,
                                 width: cardSize.width, height: cardSize.height)
@@ -219,7 +281,11 @@ private final class HoverPreviewCard: NSButton {
                 guard let self, self.generation == token else { return }
                 self.close()
                 guard AccessibilityPermission.isTrusted else { AccessibilityPermission.showAuthorizationGuide(); return }
-                owner?.onPreviewSelect?(app, info.windowID, space)
+                if fullscreenWindowIDs.contains(info.windowID) {
+                    owner?.onPreviewSelectFullscreen?(app, info.windowID)
+                } else {
+                    owner?.onPreviewSelect?(app, info.windowID, space)
+                }
             }
             document.addSubview(card); cards[info.windowID] = card
         }

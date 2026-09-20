@@ -219,6 +219,31 @@ h.test("window preview uses current desktop, display and process ownership") {
     let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: windows)
     h.eq(WindowPreview.windows(pid: 100, bundleID: "app", snapshot: snapshot,
                               display: display, allDisplays: [a, b]).map(\.windowID), [1, 5, 6])
+    // 全屏窗口独占一个 Space：只按当前桌面筛选会让 pin 住的应用得
+    // 到空列表并显示"不在此桌面"，因此必须按 fullscreenSpaceIDs 纳入。
+    let fullscreen = SpaceSnapshot(activeSpaceID: 1, windows: [
+        WindowInfo(windowID: 10, pid: 100, ownerName: "Same name", bundleID: "app",
+                   spaceIDs: [1], bounds: local),
+        WindowInfo(windowID: 11, pid: 100, ownerName: "Same name", bundleID: "app",
+                   spaceIDs: [90], bounds: local, isOnscreen: false),   // 全屏 Space
+    ])
+    let withFullscreen = WindowPreview.windows(pid: 100, bundleID: "app", snapshot: fullscreen,
+                                               display: display, allDisplays: [a, b],
+                                               fullscreenSpaceIDs: [90])
+    h.eq(withFullscreen.map(\.windowID), [10, 11], "全屏窗口也进入预览")
+    let withoutFullscreen = WindowPreview.windows(pid: 100, bundleID: "app", snapshot: fullscreen,
+                                                  display: display, allDisplays: [a, b])
+    h.eq(withoutFullscreen.map(\.windowID), [10],
+         "未提供全屏 Space 时行为不变（旧调用方兼容）")
+    h.ok(WindowPreview.isFullscreen(
+        WindowInfo(windowID: 11, pid: 100, ownerName: "Same name", bundleID: "app",
+                   spaceIDs: [90], bounds: local, isOnscreen: false),
+        fullscreenSpaceIDs: [90]), "全屏标记判定")
+    h.ok(!WindowPreview.isFullscreen(
+        WindowInfo(windowID: 10, pid: 100, ownerName: "Same name", bundleID: "app",
+                   spaceIDs: [1], bounds: local),
+        fullscreenSpaceIDs: [90]), "当前桌面窗口不算全屏")
+
     h.eq(WindowPreview.windows(pid: 100, bundleID: "other", snapshot: snapshot,
                               display: display, allDisplays: [a, b]).count, 0)
     let launcher = Launcher(provider: FakeProvider(snap: snapshot, displaysList: [display,

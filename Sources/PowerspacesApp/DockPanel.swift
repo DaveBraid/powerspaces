@@ -17,6 +17,10 @@ final class DockPanel: NSPanel {
     }
 
     var onPreviewWindows: ((DockApp, String, @escaping ([WindowInfo]?) -> Void) -> Void)?
+    /// 当前所有全屏 Space；预览据此标记全屏窗口（与 `WindowPreview` 的筛选保持同一来源）。
+    var onFullscreenSpaceIDs: (() -> Set<SpaceID>)?
+    /// 点击全屏窗口的预览：允许切换到它所在的 Space（与共享全屏分区同一条路径）。
+    var onPreviewSelectFullscreen: ((DockApp, CGWindowID) -> Void)?
     var onPreviewSelect: ((DockApp, CGWindowID, String) -> Void)?
     var previewGlassFrame: NSRect { convertToScreen(effect.convert(effect.bounds, to: nil)) }
     var onSelect: ((DockApp, Bool, Bool) -> Void)?
