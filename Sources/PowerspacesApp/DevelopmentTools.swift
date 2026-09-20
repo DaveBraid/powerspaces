@@ -517,44 +517,53 @@ enum DevelopmentTools {
             // 没有稳定位置（实测同一构造在底/左报 84pt、顶 316pt、右 nil），
             // 断言它只会产生噪声。面板层的正确性由上面四组实机几何基准覆盖。
 
-            // 预留换算：用实机测得的四组面板/玻璃几何做回归基准
-            // （内建屏 1470×956，panel 与 glassInPanel 取自运行中的程序坞面板）。
-            // 期望值是同一屏幕下已逐像素验证过的窗口边缘：底 872 / 左 176 / 右 1163 / 顶 156。
-            // 这锁定「预留 = 屏幕物理边 → 可见玻璃内沿」，可捕获左右量错边、
-            // 或按面板尺寸/外沿计算导致的偏移。
+            // 预留换算：构造**物理自洽**的合成几何——玻璃贴屏幕外侧、外侧偏移固定为
+            // `outerInset`，面板比玻璃厚出的部分是内侧留白。这样期望值可以直接从几何推导：
+            //   预留 = 屏幕边 → 玻璃内沿 = outerInset + glassThickness
+            // 不照抄实机数据里的 `glassInPanel` 偏移：实测该字段的参考边在四个方向间
+            // 并不一致（底部报 6 而实际内沿在 45、右侧报 137 而实际在 6），照抄会把
+            // 自检变成对某个方向的硬编码，换屏或改动后误报。
+            let long: CGFloat = 600                     // 沿屏幕边的长度
+            let crossThickness: CGFloat = edge.isVertical ? 313 : 129
+            let glassThickness: CGFloat = edge.isVertical ? 170 : 78
+            let outerInset: CGFloat = 6                 // 屏幕边 → 玻璃外沿
             let panel: CGRect
             let glass: CGRect
-            let measuredEdge: CGFloat
             switch edge {
             case .bottom:
-                panel = CGRect(x: 6, y: 827, width: 1458, height: 129)
-                glass = CGRect(x: 6, y: 6, width: 1446, height: 78)
-                measuredEdge = 872
+                panel = CGRect(x: screenFrame.minX, y: screenFrame.maxY - crossThickness,
+                               width: long, height: crossThickness)
+                glass = CGRect(x: panel.minX + outerInset, y: outerInset,
+                               width: long - 2 * outerInset, height: glassThickness)
             case .top:
-                panel = CGRect(x: 6, y: 33, width: 1458, height: 129)
-                glass = CGRect(x: 6, y: 45, width: 1446, height: 78)
-                measuredEdge = 156
+                panel = CGRect(x: screenFrame.minX, y: screenFrame.minY,
+                               width: long, height: crossThickness)
+                // 玻璃贴屏幕外侧（上边）：其上偏移 = outerInset，内沿落在
+                // outerInset + glassThickness 处。
+                glass = CGRect(x: panel.minX + outerInset, y: outerInset,
+                               width: long - 2 * outerInset, height: glassThickness)
             case .left:
-                panel = CGRect(x: 0, y: 38, width: 313, height: 914)
-                glass = CGRect(x: 6, y: 6, width: 170, height: 902)
-                measuredEdge = 176
+                panel = CGRect(x: screenFrame.minX, y: screenFrame.minY,
+                               width: crossThickness, height: long)
+                glass = CGRect(x: outerInset, y: panel.minY + outerInset,
+                               width: glassThickness, height: long - 2 * outerInset)
             case .right:
-                panel = CGRect(x: 1157, y: 38, width: 313, height: 914)
-                glass = CGRect(x: 137, y: 6, width: 170, height: 902)
-                measuredEdge = 1163
+                panel = CGRect(x: screenFrame.maxX - crossThickness, y: screenFrame.minY,
+                               width: crossThickness, height: long)
+                // 玻璃贴屏幕外侧（右边）：其左偏移 = outerInset，内沿落在
+                // 屏幕右边往内 outerInset + glassThickness 处。
+                glass = CGRect(x: outerInset, y: panel.minY + outerInset,
+                               width: glassThickness, height: long - 2 * outerInset)
             }
+            // 面板贴屏幕边、玻璃贴面板外侧，因此玻璃内沿落在距屏幕边
+            // `outerInset + glassThickness` 处——四个方向同式，与停靠方向无关。
+            // 这正是「屏幕边 → 可见玻璃内沿」的物理距离。
+            let expected = outerInset + glassThickness
             let reserve = DockGeometry.reserveThickness(
                 panel: panel, glassInPanel: glass, screenFrame: screenFrame,
                 primaryHeight: primaryHeight, edge: edge)
-            let expected: CGFloat
-            switch edge {
-            case .bottom: expected = screenFrame.maxY - measuredEdge
-            case .top: expected = measuredEdge - screenFrame.minY
-            case .left: expected = measuredEdge - screenFrame.minX
-            case .right: expected = screenFrame.maxX - measuredEdge
-            }
             check(near(reserve, expected),
-                  "\(position.rawValue): reserve \(Int(reserve))pt matches the verified \(Int(expected))pt")
+                  "\(position.rawValue): reserve \(Int(reserve))pt = offset+glass \(Int(expected))pt")
             check(reserve < (edge.isVertical ? screenFrame.width : screenFrame.height) / 2,
                   "\(position.rawValue): reserve is a band, not half the screen")
 
@@ -603,6 +612,15 @@ enum DevelopmentTools {
               ? "Window layout: 4 dock edges verified"
               : "Window layout: \(failures) check(s) failed")
         return failures == 0
+    }
+
+    /// 打印应用实际读到的关键偏好值，用于排查「界面/文件与运行值不一致」。
+    @MainActor static func dumpActivatedAppMove() -> Bool {
+        let prefs = Preferences.shared
+        print("  moveActivatedAppToCurrentDesktop = \(prefs.moveActivatedAppToCurrentDesktop)")
+        print("  SpacesSwitchOnActivate.isOn     = \(SpacesSwitchOnActivate.isOn)")
+        print("  WindowSpaceMover.isAvailable    = \(WindowSpaceMover.isAvailable)")
+        return true
     }
 
     /// 校验「激活应用时把它的窗口搬到当前桌面」的偏好键：默认关闭、可持久化，

@@ -252,7 +252,10 @@ public final class WindowLayoutInterceptor {
         return passthrough
     }
 
-    /// 系统平铺快捷键：Fn＋Control＋F／R／方向键。只处理明确的单窗口命令。
+    /// 系统平铺快捷键：只接管 Fn＋Control＋F（填充）与 R（还原）。
+    ///
+    /// 方向键不接管——外接键盘的方向键可能自带 `maskSecondaryFn`，
+    /// 与真正的 Fn＋Control 在事件层无法区分，接管会吞掉 Ctrl＋方向键。
     private func handleKey(_ type: CGEventType, _ event: CGEvent) -> Unmanaged<CGEvent>? {
         let passthrough = Unmanaged.passUnretained(event)
         let code = event.getIntegerValueField(.keyboardEventKeycode)
@@ -277,13 +280,13 @@ public final class WindowLayoutInterceptor {
     }
 
     /// Fn＋Control 快捷键到命令的固定映射；未列出的组合一律放行。
+    ///
+    /// **不再接管方向键**：实测外接键盘的方向键自带 `maskSecondaryFn` 标志
+    /// （未按 Fn 也会满足条件），在事件层无法与真正的 Fn＋Control 区分，
+    /// 会吃掉用户原本的 Ctrl＋方向键（切桌面／系统平铺）。方向键交回系统。
     private static let keyCommands: [Int64: WindowLayoutCommand] = [
         3: .fill,        // F
         15: .restore,    // R
-        123: .left,
-        124: .right,
-        125: .bottom,
-        126: .top,
     ]
 }
 

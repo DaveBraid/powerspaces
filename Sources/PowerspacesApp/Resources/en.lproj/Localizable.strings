@@ -651,7 +651,7 @@
 "Avoid the dock when arranging windows" = "Avoid the dock when arranging windows";
 "Take over window layout commands and animate straight to the size that clears the dock, instead of maximising first and shrinking afterwards." = "Take over window layout commands and animate straight to the size that clears the dock, instead of maximising first and shrinking afterwards.";
 "Window layout" = "Window layout";
-"Covers Option-click on the green button, double-clicking a title bar, Fn-Control-F/R/arrow keys, and the layout items in the Window menu. Full-screen and multi-window arrangements keep their system behaviour, and any command that cannot be identified with confidence is left to macOS." = "Covers Option-click on the green button, double-clicking a title bar, Fn-Control-F/R/arrow keys, and the layout items in the Window menu. Full-screen and multi-window arrangements keep their system behaviour, and any command that cannot be identified with confidence is left to macOS.";
+"Covers Option-click on the green button, double-clicking a title bar, Fn-Control-F/R, and the layout items in the Window menu. Arrow keys are left to macOS. Full-screen and multi-window arrangements keep their system behaviour, and any command that cannot be identified with confidence is left to macOS." = "Covers Option-click on the green button, double-clicking a title bar, Fn-Control-F/R, and the layout items in the Window menu. Arrow keys are left to macOS. Full-screen and multi-window arrangements keep their system behaviour, and any command that cannot be identified with confidence is left to macOS.";
 
 // 多窗口应用的呈现方式（拆分 / 合并）。
 "Multiple windows" = "Multiple windows";

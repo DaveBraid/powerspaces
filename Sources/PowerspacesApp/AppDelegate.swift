@@ -61,10 +61,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let confirm: (pid_t) -> Set<SpaceID> = { concrete.spaces(forPID: $0) }
         // 记下本次判定所在的 Space：下次前台变化若 Space 不同，就是切桌面而非激活。
         lastCheckedSpaceID = snapshot.activeSpaceID
+        // 诊断落盘：无法复现用户现场时，用于回看每一次激活的判定依据。
+        WindowLayoutDiagnostics.record(
+            "activated-app app=\(target.bundleID ?? target.name ?? "?") space=\(snapshot.activeSpaceID) "
+            + "windows=\(snapshot.windows(of: target).map { "\($0.windowID):\($0.spaceIDs)" })")
         let outcome = activatedAppMover.consider(
             .init(activeSpaceID: snapshot.activeSpaceID, target: target, pid: pid,
                   confirmSpaces: confirm),
             snapshot: snapshot)
+        WindowLayoutDiagnostics.record("activated-app outcome=\(outcome)")
         switch outcome {
         case .moved:
             Log.debug("Activated-app move: \(target.bundleID ?? target.name ?? "?") → space \(snapshot.activeSpaceID)")

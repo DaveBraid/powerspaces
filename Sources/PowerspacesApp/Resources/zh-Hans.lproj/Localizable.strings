@@ -651,7 +651,7 @@
 "Avoid the dock when arranging windows" = "整理窗口时避开程序坞";
 "Take over window layout commands and animate straight to the size that clears the dock, instead of maximising first and shrinking afterwards." = "接管窗口布局命令，直接动画到避开程序坞的尺寸，而不是先最大化再收缩。";
 "Window layout" = "窗口布局";
-"Covers Option-click on the green button, double-clicking a title bar, Fn-Control-F/R/arrow keys, and the layout items in the Window menu. Full-screen and multi-window arrangements keep their system behaviour, and any command that cannot be identified with confidence is left to macOS." = "覆盖 Option＋绿色按钮、双击标题栏、Fn＋Control＋F／R／方向键，以及「窗口」菜单中的布局项。全屏与多窗口排列保持系统原有行为；无法可靠识别的命令一律交回 macOS 处理。";
+"Covers Option-click on the green button, double-clicking a title bar, Fn-Control-F/R, and the layout items in the Window menu. Arrow keys are left to macOS. Full-screen and multi-window arrangements keep their system behaviour, and any command that cannot be identified with confidence is left to macOS." = "覆盖 Option＋绿色按钮、双击标题栏、Fn＋Control＋F（填充）与 Fn＋Control＋R（还原），以及「窗口」菜单中的布局项。方向键刻意交回 macOS：部分外接键盘在普通 Ctrl＋方向键上也会带上 Fn 标志，接管它会吞掉正常的切桌面操作。全屏与多窗口排列保持系统原有行为；无法可靠识别的命令一律交回 macOS 处理。";
 
 // 多窗口应用的呈现方式（拆分 / 合并）。
 "Multiple windows" = "多窗口应用";

@@ -73,6 +73,9 @@ if CommandLine.arguments.contains("--check-appearance") {
 if CommandLine.arguments.contains("--check-activated-app-move") {
     exit(DevelopmentTools.checkActivatedAppMove() ? 0 : 1)
 }
+if CommandLine.arguments.contains("--dump-activated-app-move") {
+    exit(DevelopmentTools.dumpActivatedAppMove() ? 0 : 1)
+}
 if CommandLine.arguments.contains("--check-localization") {
     exit(DevelopmentTools.checkLocalization() ? 0 : 1)
 }

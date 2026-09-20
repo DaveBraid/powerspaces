@@ -886,7 +886,8 @@ struct PreferencesView: View {
             } footer: {
                 Text(L10n.string(
                     "Covers Option-click on the green button, double-clicking a title bar, "
-                    + "Fn-Control-F/R/arrow keys, and the layout items in the Window menu. "
+                    + "Fn-Control-F/R, and the layout items in the Window menu. "
+                    + "Arrow keys are left to macOS. "
                     + "Full-screen and multi-window arrangements keep their system behaviour, and any "
                     + "command that cannot be identified with confidence is left to macOS."))
             }

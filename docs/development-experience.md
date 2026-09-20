@@ -467,3 +467,14 @@ nm -u /System/Library/CoreServices/Dock.app/Contents/MacOS/Dock | grep -i space
 
 新增检查：`swift run --build-system native PowerspacesApp --check-activated-app-move`（偏好默认关闭、可持久化、系统开关三种状态）。
 
+### 停止接管 Ctrl＋方向键（2026-09-20）
+
+窗口避让原本接管 `Fn＋Control＋F/R/方向键`（对应系统单窗口平铺命令），但用户反馈"Ctrl＋方向键变成了调整窗口，原来是切桌面"。排查结论与处置：
+
+- **不是系统设置被改**。系统 Mission Control 的空间切换快捷键（`com.apple.symbolichotkeys` id 79–82）仍为 `enabled = 1` 且无自定义参数；PS 从不写该 plist，只用 `CGSSetSymbolicHotKeyEnabled` 在内存里临时禁用，而那条路径（`fasterKeyboardSwitch`）默认关闭、当时也未开启，`spaceHotkeysDisabledByUs` 为 `false`。纯 `Ctrl＋方向键` 在任何系统绑定里都不存在。
+- **根因是修饰键判断在键盘之间不可靠**。实测用户在**未按 Fn** 的情况下，`Ctrl＋↑/→` 的事件里 `maskSecondaryFn` 为真（`flags=10748161`，`ctrl=true fn=true`）——部分外接键盘的方向键自带该标志。事件层无法把它与"用户真的按了 Fn"区分，于是普通 Ctrl＋方向键被当成平铺命令吞掉。
+- **处置：把方向键从接管列表移除**，只保留 `Fn＋Control＋F`（填充）与 `R`（还原）。方向键交回系统；`windowLayoutInterception` 开关保留在设置页，只调整了说明文案。
+- 实测确认：`Ctrl＋←` 不再被拦截（无 `INTERCEPT`、窗口不动）；`Fn＋Control＋F` 仍正常产生 `INTERCEPT source=system-key command=fill`。
+- 教训：**凡是靠修饰键区分意图的接管，都要考虑键盘差异**。方向键、以及某些键盘上的功能键，可能在不按键的情况下携带修饰标志；这类接管必须实测多种键盘，或干脆不接管。
+- 附带修正自检的环境依赖：`--check-window-layout` 里原本硬编码了按 1470×956 记录的面板坐标，屏幕换成 2560×1440 后误报。现改为按当前屏幕尺寸构造物理自洽的合成几何（面板贴屏幕边、玻璃贴面板外侧、外侧偏移 6pt），期望值统一为 `外侧偏移 + 玻璃厚度`，与停靠方向和屏幕尺寸都无关。
+
