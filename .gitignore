@@ -10,6 +10,9 @@
 tmp-scripts/
 logs/
 
+# DSH Computer Use 观察截图（插件默认 artifactRoot，随会话生成）
+.dsh-computer-use/
+
 
 # Xcode
 #
