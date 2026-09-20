@@ -68,6 +68,11 @@ final class DockPanel: NSPanel {
     /// 迟滞用的上一次判定，避免临界亮度来回翻转。
     private var unifiedUsesWhite: Bool?
     /// 整块程序坞统一的**标记墨色**（跟随背景亮度）；圆点/胶囊/分割线共用。
+    ///
+    /// 设为静态是因为**标记可能在面板补发颜色之后才创建**（`DockButton.setIndicator`
+    /// 在图标状态变化时增删圆点）。实测过漏掉这一环的后果：最右边一个点仍是白色。
+    /// 所有程序坞共用同一块玻璃亮度，因此静态共享是安全的。
+    private(set) static var unifiedInkColor: NSColor = .white
     private var unifiedInkColor: NSColor = .white
     /// 墨色迟滞的上一次判定，避免临界亮度来回翻转。
     private var unifiedUsesDarkInk: Bool?
@@ -1330,6 +1335,7 @@ final class DockPanel: NSPanel {
         }
         let inkChanged = ink != unifiedInkColor
         unifiedInkColor = ink
+        Self.unifiedInkColor = ink
         guard color != unifiedTextColor || inkChanged else { return }
         unifiedTextColor = color
         propagateUnifiedTextColor()
