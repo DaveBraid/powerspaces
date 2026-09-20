@@ -202,8 +202,9 @@ private final class HoverPreviewCard: NSButton {
         let token = generation
         owner.onPreviewWindows?(app, space) { [weak self] windows in
             guard let self, self.generation == token, let owner = self.owner else { return }
-            guard let windows else { self.showMessage("Window preview unavailable"); return }
-            guard !windows.isEmpty else { self.showMessage("No windows on this desktop"); return }
+            // 没有可预览的窗口就**什么都不显示**：悬停只负责展示预览，
+            // 弹一个空面板说"此桌面没有窗口"是多余的打扰。查询失败同理（多为瞬时状态）。
+            guard let windows, !windows.isEmpty else { self.close(); return }
             self.show(windows, app: app)
             // 一律允许离屏：全屏窗口所在的 Space 不可见，不允许离屏就只会在卡片上写
             // "Window is on another desktop"，而这正是本功能要消除的情况。

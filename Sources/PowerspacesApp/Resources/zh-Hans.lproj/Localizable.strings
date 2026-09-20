@@ -633,7 +633,6 @@
 "Window is minimized or hidden" = "窗口已最小化或隐藏，点击可恢复";
 "Enable Screen Recording in Settings → Effects for window previews." = "请在设置 → 效果中为窗口预览启用屏幕录制权限。";
 "Loading window previews…" = "正在加载窗口预览…";
-"No windows on this desktop" = "此桌面没有窗口";
 "needs Accessibility permission to focus this window." = "需要辅助功能权限才能聚焦此窗口。";
 "this window is no longer available on this desktop." = "此窗口已不在当前桌面或已关闭。";
 "could not focus this window." = "无法聚焦此窗口。";
