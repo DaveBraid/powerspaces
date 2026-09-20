@@ -11,9 +11,11 @@ private final class HoverPreviewPanel: NSPanel {
 }
 
 /// 缩略图按钮只在点击时执行窗口操作；标题、占位与图片由同一次展开更新。
-/// 预览卡片右上角的「全屏」标记：Liquid Glass 胶囊包裹应用图标。
+/// 预览卡片右下角的「全屏」标记：Liquid Glass 胶囊 + 系统全屏图标。
 ///
 /// 用于区分全屏窗口与当前桌面窗口——全屏窗口独占一个 Space，点它需要跳到那个 Space。
+/// 图标用 `arrow.up.left.and.arrow.down.right`：这正是 macOS「进入全屏」的系统图标，
+/// 比缩到 26pt 的应用图标清晰得多（应用图标在这个尺寸下会糊成一团）。
 private final class FullscreenBadge: NSView {
     private let icon = NSImageView()
     /// macOS 26+ 的玻璃材质；旧系统回退为半透明深色胶囊。
@@ -41,23 +43,26 @@ private final class FullscreenBadge: NSView {
         surface.autoresizingMask = [.width, .height]
         addSubview(surface)
         icon.imageScaling = .scaleProportionallyUpOrDown
-        icon.frame = bounds.insetBy(dx: 4, dy: 4)
+        icon.frame = bounds.insetBy(dx: 5, dy: 5)
         icon.autoresizingMask = [.width, .height]
+        // 模板图：跟随系统前景色，深浅玻璃上都清晰。
+        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+        icon.image = NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right",
+                             accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+        icon.contentTintColor = .labelColor
         addSubview(icon)
         setAccessibilityElement(false)
         toolTip = L10n.string("Full screen")
     }
     required init?(coder: NSCoder) { nil }
-    func configure(appIcon: NSImage?) {
-        icon.image = appIcon
-    }
 }
 
 private final class HoverPreviewCard: NSButton {
     let thumbnail = NSImageView()
     let caption = NSTextField(labelWithString: "")
     let placeholder = NSTextField(wrappingLabelWithString: "")
-    /// 全屏窗口才有；平时隐藏。
+    /// 全屏窗口才有；置于缩略图右下角，平时隐藏。
     let fullscreenBadge = FullscreenBadge(frame: .zero)
     var select: (() -> Void)?
     init(title: String) {
@@ -83,7 +88,7 @@ private final class HoverPreviewCard: NSButton {
         thumbnail.frame = NSRect(x: 8, y: 28, width: bounds.width - 16, height: bounds.height - 36)
         placeholder.frame = NSRect(x: 12, y: bounds.midY - 24, width: bounds.width - 24, height: 48)
         caption.frame = NSRect(x: 8, y: 7, width: bounds.width - 16, height: 17)
-        // 右上角，压在缩略图之上。
+        // 缩略图右下角（留 10pt 边距）；右下不与标题、也不与左上角的窗口内容冲突。
         let side: CGFloat = 26
         fullscreenBadge.frame = NSRect(x: bounds.maxX - side - 10,
                                        y: thumbnail.frame.maxY - side - 10,
@@ -264,12 +269,10 @@ private final class HoverPreviewCard: NSButton {
         // 全屏窗口独立标记：需要跳到它的 Space，因此卡片右上角加一层玻璃图标。
         let fullscreenSpaces = owner.onFullscreenSpaceIDs?() ?? []
         var fullscreenWindowIDs: Set<CGWindowID> = []
-        let appIcon = NSRunningApplication(processIdentifier: app.pid ?? 0)?.icon
         for (index, info) in windows.enumerated() {
             let card = HoverPreviewCard(title: app.name + " · " + String(index + 1))
             if WindowPreview.isFullscreen(info, fullscreenSpaceIDs: fullscreenSpaces) {
                 card.fullscreenBadge.isHidden = false
-                card.fullscreenBadge.configure(appIcon: appIcon)
                 card.setAccessibilityLabel(app.name + " · " + L10n.string("Full screen"))
                 fullscreenWindowIDs.insert(info.windowID)
             }
