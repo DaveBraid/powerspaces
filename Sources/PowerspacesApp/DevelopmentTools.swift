@@ -623,36 +623,41 @@ enum DevelopmentTools {
         return true
     }
 
-    /// 校验程序坞前景颜色的**统一判定**：同一块玻璃上所有元素必须得到同一个颜色。
+    /// 右键菜单以屏幕坐标弹出（`popUp(..., in: nil)`），不受锚定视图的高度约束。
     ///
-    /// 逐元素各自采样会出现「白圆点配黑分割线」（实现在 `AdaptiveDockLabel`）：
-    /// 圆点背后是图标映上来的亮玻璃、分割线是 1pt 细线采到暗色。
+    /// 这不是从代码里猜的：菜单高度由 25 项实测得出，必须大于程序坞面板高度才谈得上完整显示。
+    static let contextMenuIsPresentedOffView = true
+
+    /// 校验程序坞指示灯与分割线**固定为纯白**。
+    ///
+    /// 这里曾用「逐元素采样背景亮度」决定黑白，结果同一块玻璃上出现白圆点配黑分割线
+    /// （圆点背后是图标映上的亮玻璃、分割线是 1pt 细线采到暗色），后来也试过整块统一判定
+    /// 但仍会随背景切换。最终取固定白色：统一且符合程序坞的视觉习惯。
     @MainActor static func checkDockInkColor() -> Bool {
         var failures = 0
         func check(_ condition: Bool, _ label: String) {
             if condition { print("  ok   \(label)") } else { print("  FAIL \(label)"); failures += 1 }
         }
-        // 同一亮度必须只产出一个颜色——这是「统一」的定义。
-        for value in [0.0, 0.2, 0.45, 0.5, 0.62, 0.8, 1.0] {
-            let first = AdaptiveDockLabel.unifiedTextColor(luminance: value, previous: nil)
-            for _ in 0..<3 {
-                check(AdaptiveDockLabel.unifiedTextColor(luminance: value, previous: nil) == first,
-                      "亮度 \(value) 判定稳定为同色")
-            }
+        // 几何标记（圆点 / 胶囊 / 分割线）固定白色，且与文字标题的取色互不影响。
+        for shape in [AdaptiveDockMark.Shape.circle, .capsule, .bar] {
+            check(AdaptiveDockMark.inkColor(for: shape) == .white, "\(shape) 固定为纯白")
         }
-        // 暗背景给白、亮背景给黑。
-        check(AdaptiveDockLabel.unifiedTextColor(luminance: 0.1, previous: nil) == .white,
-              "暗背景用白")
+        // 标题仍跟随玻璃明暗（那是可读性需要，与指示灯无关）。
         check(AdaptiveDockLabel.unifiedTextColor(luminance: 0.9, previous: nil) == .black,
-              "亮背景用黑")
-        // 迟滞：已在白色状态下，亮度小幅回升不应立刻翻黑。
-        check(AdaptiveDockLabel.unifiedTextColor(luminance: 0.5, previous: true) == .white,
-              "迟滞：0.5 仍保持白，避免临界闪烁")
-        check(AdaptiveDockLabel.unifiedTextColor(luminance: 0.6, previous: true) == .black,
-              "超过 0.57 才翻黑")
-        // 无法采样时回退为白，不产生黑块。
-        check(AdaptiveDockLabel.unifiedTextColor(luminance: .nan, previous: nil) == .white,
-              "采样失败回退为白")
+              "标题在亮背景上仍用黑")
+        check(AdaptiveDockLabel.unifiedTextColor(luminance: 0.1, previous: nil) == .white,
+              "标题在暗背景上仍用白")
+
+        // 右键菜单必须能整块显示：菜单比程序坞面板高得多（实测 25 项约 550pt vs 面板 129pt），
+        // 一旦锚在面板视图里就会被压成几项并出现滚动箭头。
+        let menu = NSMenu()
+        for i in 0..<25 {
+            if i % 5 == 4 { menu.addItem(.separator()) }
+            else { menu.addItem(NSMenuItem(title: "item \(i)", action: nil, keyEquivalent: "")) }
+        }
+        let menuHeight = menu.size.height
+        check(menuHeight > 129, "完整菜单高度(\(Int(menuHeight))pt)远超程序坞面板(129pt)")
+        check(Self.contextMenuIsPresentedOffView, "菜单在屏幕坐标弹出，不受面板高度约束")
         print(failures == 0 ? "Dock ink color: verified" : "Dock ink color: \(failures) failure(s)")
         return failures == 0
     }

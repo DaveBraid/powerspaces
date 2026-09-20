@@ -182,27 +182,39 @@ extension DockPanel: NSMenuDelegate {
 
     @objc private func openPreferencesMenu(_ sender: NSMenuItem) { onOpenPreferences?() }
 
-    /// Pops `menu` just off the icon, away from the screen edge the bar hugs. The
-    /// button's coordinate space is unflipped (y grows upward) and `popUp` anchors
-    /// the menu's top-left at the point, growing down/right.
-    ///   Top bar:    room below — anchor at the icon's bottom edge (y = 0), opens down.
-    ///   Bottom bar: no room below — a small negative y lets AppKit flip it upward.
-    ///   Left bar:   open to the right of the icon, vertically centered.
-    ///   Right bar:  open to the left of the icon, vertically centered.
-    /// Centering: x shifts left by half the menu width (horizontal bars), or y
-    /// shifts up by half the menu height so it brackets the icon (vertical).
+    /// 在**屏幕坐标**上弹出 `menu`，不锚定到任何视图。
+    ///
+    /// 原先用 `menu.popUp(positioning:at:in: button)`：锚在按钮所在的程序坞面板里，
+    /// AppKit 会把菜单约束在面板窗口范围内，菜单比面板高时就被截断并出现滚动箭头
+    /// （实测只能看到「更改程序坞颜色 / 新建窗口 / 固定」三项）。
+    /// 改成以屏幕坐标调用后菜单是独立的，可以超出面板高度、完整显示。
     private func popUpMenu(_ menu: NSMenu, from button: NSButton) {
         let gap: CGFloat = 6
-        let centerX = button.bounds.midX - menu.size.width / 2
-        let centerY = button.bounds.midY + menu.size.height / 2
-        let anchor: NSPoint
+        // 换算到屏幕坐标（左下原点）；程序坞面板不缩放，直接转换即可。
+        let inWindow = button.convert(button.bounds, to: nil)
+        let onScreen = button.window?.convertToScreen(inWindow) ?? inWindow
+        // 先让菜单算出真实尺寸，否则贴边计算会用到 0 尺寸。
+        menu.update()
+        let size = menu.size
+        let edgeGap: CGFloat = 4
+        var point: NSPoint
         switch Preferences.shared.barPosition {
-        case .top:    anchor = NSPoint(x: centerX, y: 0)
-        case .bottom: anchor = NSPoint(x: centerX, y: -gap)
-        case .left:   anchor = NSPoint(x: button.bounds.maxX + gap, y: centerY)
-        case .right:  anchor = NSPoint(x: button.bounds.minX - menu.size.width - gap, y: centerY)
+        case .top, .bottom:
+            // 水平停靠：横向对中图标，纵向落在图标靠屏幕内侧的一边，留出间隙。
+            point = NSPoint(x: onScreen.midX - size.width / 2, y: onScreen.midY)
+            if let visible = (button.window?.screen ?? NSScreen.main)?.visibleFrame {
+                let opensDown = onScreen.midY > visible.midY
+                point.y = opensDown ? onScreen.minY - size.height - edgeGap
+                                    : onScreen.maxY + edgeGap
+                point.x = min(max(point.x, visible.minX + edgeGap),
+                              visible.maxX - size.width - edgeGap)
+            }
+        case .left:
+            point = NSPoint(x: onScreen.maxX + gap, y: onScreen.midY - size.height / 2)
+        case .right:
+            point = NSPoint(x: onScreen.minX - size.width - gap, y: onScreen.midY - size.height / 2)
         }
-        menu.popUp(positioning: nil, at: anchor, in: button)
+        menu.popUp(positioning: nil, at: point, in: nil)
     }
 
     private func strategyItem(_ title: String, _ kind: StrategyKind,

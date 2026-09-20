@@ -173,8 +173,15 @@ final class AdaptiveDockMark: AdaptiveDockLabel {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    /// 几何标记的固定颜色：纯白，不随背景变化。
+    ///
+    /// 逐元素采样会让圆点（背后是图标映上的亮玻璃）与分割线（1pt 细线采到暗色）
+    /// 得出不同颜色；整块统一判定又会让整套指示灯随背景在黑白间切换。固定白色
+    /// 既保证统一，也符合程序坞的视觉习惯。
+    static func inkColor(for shape: Shape) -> NSColor { .white }
+
     override func draw(_ dirtyRect: NSRect) {
-        let color = textColor ?? .secondaryLabelColor
+        let color = Self.inkColor(for: shape)
         switch shape {
         case .circle:
             let path = NSBezierPath(ovalIn: bounds)
