@@ -849,6 +849,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DistributedNotificationCenter.default().addObserver(
             self, selector: #selector(systemDisplaySettingsChanged),
             name: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil)
+        // 前台激活通知：本机实测该通知只在「前台真的换人」时送达（同一应用重复激活不送），
+        // 因此它比轮询更早、更准。落盘时序用于判断能否抢在系统切桌面之前搬移。
+        nc.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
+                       object: nil, queue: .main) { [weak self] note in
+            guard let self else { return }
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            // 记录通知到达瞬间的 Space 与目标应用窗口归属：判断能否抢在系统切桌面之前搬移。
+            let space = (try? self.provider.snapshot().activeSpaceID).map(String.init) ?? "?"
+            var windows = "?"
+            if let app {
+                let target = AppTarget(bundleID: app.bundleIdentifier, name: app.localizedName)
+                if let snap = try? self.provider.snapshot() {
+                    windows = "\(snap.windows(of: target).map { "\($0.windowID):\($0.spaceIDs)" })"
+                }
+            }
+            WindowLayoutDiagnostics.record(
+                "activated-app NOTIFY app=\(app?.bundleIdentifier ?? "?") pid=\(app?.processIdentifier ?? -1) "
+                + "space=\(space) windows=\(windows)")
+            guard let app, app.processIdentifier != getpid() else { return }
+            self.moveActivatedAppIfNeeded(
+                target: AppTarget(bundleID: app.bundleIdentifier, name: app.localizedName),
+                pid: app.processIdentifier)
+        }
+        // 桌面变化也要有时序记录，才能和上面的激活时刻对照。
+        nc.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
+                       object: nil, queue: .main) { _ in
+            WindowLayoutDiagnostics.record("activated-app SPACE-CHANGED-NOTIFY")
+        }
         // Window open/close don't post workspace notifications; poll lightly at
         // the user's chosen interval.
         restartPoll()
