@@ -479,6 +479,24 @@ final class DockButton: NSButton {
         needsLayout = true
     }
 
+    /// 指示灯标记在自身坐标系里的条带（沿停靠轴全长、横轴覆盖标记厚度）。
+    ///
+    /// 供程序坞面板定位「统一亮度采样区」：判定要对齐指示灯实际覆盖的背景，
+    /// 而不是整块玻璃（含图标区，会把亮度带偏）。
+    var indicatorBand: NSRect {
+        guard runningDot != nil || !extraDots.isEmpty else { return .zero }
+        let isVertical = Preferences.shared.barPosition.isVertical
+        let gap = CGFloat(Preferences.shared.runningDotGap)
+        let thickness = Preferences.shared.barPosition.isVertical
+            ? Self.capsuleThickness : Self.capsuleThickness
+        if isVertical {
+            return NSRect(x: -gap - thickness, y: bounds.minY,
+                          width: thickness, height: bounds.height)
+        }
+        return NSRect(x: bounds.minX, y: -gap - thickness,
+                      width: bounds.width, height: thickness)
+    }
+
     override func layout() {
         super.layout()
         updateBoxLayer() // bounds are only real once we've been laid out

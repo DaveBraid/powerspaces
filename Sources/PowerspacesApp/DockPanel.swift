@@ -60,6 +60,13 @@ final class DockPanel: NSPanel {
     }
 
     private let effect = GlassSurfaceView(frame: .zero)
+    /// 整块程序坞统一的前景颜色（纯黑或纯白）；由玻璃亮度**一次**判定后下发。
+    ///
+    /// 不能让每个圆点/胶囊/分割线各自采样：圆点背后是图标映上来的亮玻璃、
+    /// 分割线是 1pt 细线采到暗色，逐元素判定会出现白圆点配黑分割线。
+    private var unifiedTextColor: NSColor = .white
+    /// 迟滞用的上一次判定，避免临界亮度来回翻转。
+    private var unifiedUsesWhite: Bool?
     /// 旧系统的染色与降低透明度覆盖层；Liquid Glass 使用原生 tintColor。
     private let tintOverlay = PassthroughView()
     /// The persistent UUID of the desktop the bar is currently showing on, set by
@@ -220,6 +227,14 @@ final class DockPanel: NSPanel {
             tintOverlay.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
         ])
         effect.glassContent.addSubview(stack) // 图标归属原生 contentView，保留原有几何约束。
+        // 亮度只在这里判定一次，再统一下发给标题、圆点/胶囊与分割线。
+        effect.onLuminanceChanged = { [weak self] luminance in
+            self?.applyUnifiedTextColor(luminance: luminance)
+        }
+        effect.installLuminanceTracking()
+        effect.luminanceRegion = { [weak self] in
+            self?.indicatorBandInGlass() ?? self?.effect.bounds ?? .zero
+        }
         // The blur (visible bar) hugs the window's OUTER edge — the screen edge the
         // bar sits against — with all hover headroom on the inner side; its cross
         // position and size are set per orientation in `applyBarFrame`. The icon
@@ -738,6 +753,8 @@ final class DockPanel: NSPanel {
             button.setAccessibilityLabel(app.isLauncher ? L10n.string("App Launcher") : app.name)
             button.slotKey = slotKey
             if labeled { applyLabel(to: button, app: app, side: side) }
+            // 新建的圆点/胶囊/标题默认走逐元素采样，这里立刻改用统一颜色。
+            propagateUnifiedTextColor()
             // A window-count badge for an app with several windows here — but only
             // when we're not already showing one icon per window (which would make
             // the count redundant), and never on the launcher tile.
@@ -1273,6 +1290,51 @@ final class DockPanel: NSPanel {
     private var magnificationReservedFrame: NSRect?
     var pointerInteractionFrame: NSRect { magnificationVisibleFrame ?? frame }
     private var magnificationRestFrame = NSRect.zero
+    /// 指示灯条带在玻璃坐标系里的位置；没有指示灯时退回整块玻璃。
+    ///
+    /// 判定要对齐指示灯**实际覆盖的背景**：整块玻璃包含图标区，图标映上来的亮色会把
+    /// 判定带偏（实测整块采样得到黑色，而指示灯背后是暗色玻璃）。
+    private func indicatorBandInGlass() -> NSRect? {
+        let buttons = stack.arrangedSubviews.compactMap { $0 as? DockButton }
+        let bands = buttons.map(\.indicatorBand).filter { $0.height > 0 && $0.width > 0 }
+        guard let first = bands.first else { return nil }
+        var union = first
+        for band in bands.dropFirst() { union = union.union(band) }
+        // 从按钮坐标系转到玻璃坐标系；沿轴两端各留一点余量。
+        let inStack = stack.convert(union, from: buttons[0])
+        let inGlass = effect.glassContent.convert(inStack, from: stack)
+        let pad: CGFloat = 2
+        return inGlass.insetBy(dx: -pad, dy: -pad)
+    }
+
+    /// 按整块玻璃的亮度判定前景颜色，并下发给所有自适应元素。
+    ///
+    /// 手动指定标题颜色时（`automaticTitleColor == false`）不改动任何元素——那是用户的选择。
+    private func applyUnifiedTextColor(luminance: Double) {
+        guard Preferences.shared.automaticTitleColor else { return }
+        let color = AdaptiveDockLabel.unifiedTextColor(luminance: luminance,
+                                                       previous: unifiedUsesWhite)
+        if luminance.isFinite, (0...1).contains(luminance) {
+            unifiedUsesWhite = color == .white
+        } else {
+            unifiedUsesWhite = nil
+        }
+        guard color != unifiedTextColor else { return }
+        unifiedTextColor = color
+        propagateUnifiedTextColor()
+    }
+
+    /// 把当前统一颜色下发给视图树里所有自适应元素（新增的元素也会在重建时收到）。
+    private func propagateUnifiedTextColor() {
+        func visit(_ view: NSView) {
+            if let adaptive = view as? AdaptiveDockLabel {
+                adaptive.applyUnifiedTextColor(unifiedTextColor)
+            }
+            for child in view.subviews { visit(child) }
+        }
+        visit(stack)
+    }
+
     /// 该条目在程序坞里显示什么指示标记。
     ///
     /// 两种模式共用一条前置规则：运行中但**当前桌面没有窗口** → 一个空心胶囊

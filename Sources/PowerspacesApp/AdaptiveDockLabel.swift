@@ -9,6 +9,34 @@ class AdaptiveDockLabel: NSTextField {
     private var luminanceLayer: CALayer?
     private var luminanceObserver: DockLuminanceObserver?
     private var usesWhite: Bool?
+    /// 面板下发的统一颜色；非 nil 时优先于逐元素采样。
+    private var forcedTextColor: NSColor?
+
+    /// 面板层统一判定使用：按背景亮度选纯黑或纯白。
+    ///
+    /// 判定必须**整块程序坞一次**，不能让每个元素各自采样：圆点背后是图标映上来的
+    /// 亮玻璃、分割线是 1pt 细线采到暗色，逐元素判定会出现白圆点配黑分割线。
+    /// 迟滞（0.57 / 0.43）避免临界亮度来回翻转。
+    static func unifiedTextColor(luminance: Double, previous: Bool?) -> NSColor {
+        guard luminance.isFinite, (0...1).contains(luminance) else { return .white }
+        let white = previous.map { $0 ? luminance < 0.57 : luminance < 0.43 } ?? (luminance < 0.5)
+        return white ? .white : .black
+    }
+
+    /// 面板下发统一颜色；传入后停止逐元素采样，保证同一块玻璃上只有一个颜色。
+    func applyUnifiedTextColor(_ color: NSColor?) {
+        forcedTextColor = color
+        luminanceLayer?.removeFromSuperlayer()
+        luminanceLayer = nil
+        luminanceObserver = nil
+        if let color {
+            textColor = color
+            needsDisplay = true
+        }
+    }
+
+    /// 当前是否由面板统一指定颜色。
+    var hasUnifiedTextColor: Bool { forcedTextColor != nil }
 
     /// 合成器只返回整个元素区域的平均亮度；不读取像素，不增加应用侧轮询。
     private func installLuminanceTracking() {
@@ -29,7 +57,9 @@ class AdaptiveDockLabel: NSTextField {
     }
 
     /// 使用迟滞避免临界亮度闪烁，整段文字或整条线始终只有一种颜色。
+    /// 面板已下发统一颜色时不做任何事——否则又会退回逐元素判定。
     private func applyLuminance(_ value: Double) {
+        guard forcedTextColor == nil else { return }
         guard value.isFinite, (0...1).contains(value) else {
             usesWhite = nil
             textColor = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .white : .black
@@ -60,7 +90,7 @@ class AdaptiveDockLabel: NSTextField {
 
     /// 采样层必须是文字层下方的兄弟层，避免细线覆盖采样区并形成颜色反馈。
     private func updateLuminanceRegion() {
-        guard let sample = luminanceLayer else { return }
+        guard forcedTextColor == nil, let sample = luminanceLayer else { return }
         guard let parent = superview, let foreground = layer else {
             sample.removeFromSuperlayer()
             return
@@ -208,4 +238,16 @@ final class DockDividerView: NSView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// 玻璃层亮度采样回调桥接（`CABackdropLayer` 的 delegate 需要 Objective-C 方法）。
+///
+/// 与逐元素采样用的是同一套合成器回调，区别只是采样区域是**整块玻璃**。
+final class DockLuminanceBridge: NSObject, CALayerDelegate {
+    private let changed: (Double) -> Void
+    init(changed: @escaping (Double) -> Void) { self.changed = changed }
+    @objc func backdropLayer(_ layer: CALayer, didChangeLuma value: Double) { changed(value) }
+    @objc func backdropLayer(_ layer: CALayer, didSampleProtectedLuma protected: Bool) {
+        if protected { changed(.nan) }
+    }
 }

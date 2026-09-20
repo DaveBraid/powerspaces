@@ -13,6 +13,39 @@ final class GlassSurfaceView: NSView {
     var allowsNativeDockMaterial = true { didSet { refresh() } } // 开发验证可强制公开材质回退。
     var usesNativeDockMaterial: Bool { nativeDockSurface?.isHidden == false }
     let glassContent = NSView()
+
+    /// 整块玻璃背景亮度变化时回调（参数为 0…1 的平均亮度，无法采样时为 .nan）。
+    var onLuminanceChanged: ((Double) -> Void)?
+    /// 采样区域（玻璃坐标系）；nil 表示整块玻璃。由面板指向指示灯条带。
+    var luminanceRegion: (() -> NSRect)? {
+        didSet { needsLayout = true }
+    }
+    /// 采样层：覆盖采样区域，只统计背景、不参与绘制。
+    private var luminanceLayer: CALayer?
+    private var luminanceObserver: DockLuminanceBridge?
+
+    /// 安装整块玻璃的亮度采样。
+    ///
+    /// 判定必须一次做在整块程序坞上：`AdaptiveDockLabel` 原先每个元素各采样自己那一小块，
+    /// 圆点背后是图标映上来的亮玻璃、分割线是 1pt 细线采到暗色，于是出现白圆点配黑分割线。
+    func installLuminanceTracking() {
+        guard luminanceLayer == nil,
+              ProcessInfo.processInfo.operatingSystemVersion.majorVersion == 27,
+              let type = NSClassFromString("CABackdropLayer") as? CALayer.Type else { return }
+        let backdrop = type.init()
+        guard ["setTracksLuma:", "setCaptureOnly:", "setWindowServerAware:"].allSatisfy({
+            backdrop.responds(to: NSSelectorFromString($0))
+        }) else { return }
+        let bridge = DockLuminanceBridge { [weak self] value in self?.onLuminanceChanged?(value) }
+        backdrop.delegate = bridge
+        backdrop.setValue(true, forKey: "captureOnly")
+        backdrop.setValue(true, forKey: "windowServerAware")
+        backdrop.setValue(true, forKey: "tracksLuma")
+        layer?.addSublayer(backdrop)
+        luminanceLayer = backdrop
+        luminanceObserver = bridge
+    }
+
     var dockMode = false { didSet { refresh() } }
     var settingsMode = false { didSet { refresh() } }
     private var hostsContent: Bool { dockMode || settingsMode }
@@ -62,6 +95,12 @@ final class GlassSurfaceView: NSView {
         super.layout()
         surface.frame = bounds
         nativeDockSurface?.frame = bounds
+        if let sample = luminanceLayer {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            sample.frame = luminanceRegion?() ?? bounds
+            CATransaction.commit()
+        }
         if hostsContent { glassContent.frame = bounds }
         if dockMode {
             // AppKit 在图层重建时可能恢复裁切；仅背景有圆角，放大前景必须能越过玻璃边界。

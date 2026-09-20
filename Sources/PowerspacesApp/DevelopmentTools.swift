@@ -623,6 +623,40 @@ enum DevelopmentTools {
         return true
     }
 
+    /// 校验程序坞前景颜色的**统一判定**：同一块玻璃上所有元素必须得到同一个颜色。
+    ///
+    /// 逐元素各自采样会出现「白圆点配黑分割线」（实现在 `AdaptiveDockLabel`）：
+    /// 圆点背后是图标映上来的亮玻璃、分割线是 1pt 细线采到暗色。
+    @MainActor static func checkDockInkColor() -> Bool {
+        var failures = 0
+        func check(_ condition: Bool, _ label: String) {
+            if condition { print("  ok   \(label)") } else { print("  FAIL \(label)"); failures += 1 }
+        }
+        // 同一亮度必须只产出一个颜色——这是「统一」的定义。
+        for value in [0.0, 0.2, 0.45, 0.5, 0.62, 0.8, 1.0] {
+            let first = AdaptiveDockLabel.unifiedTextColor(luminance: value, previous: nil)
+            for _ in 0..<3 {
+                check(AdaptiveDockLabel.unifiedTextColor(luminance: value, previous: nil) == first,
+                      "亮度 \(value) 判定稳定为同色")
+            }
+        }
+        // 暗背景给白、亮背景给黑。
+        check(AdaptiveDockLabel.unifiedTextColor(luminance: 0.1, previous: nil) == .white,
+              "暗背景用白")
+        check(AdaptiveDockLabel.unifiedTextColor(luminance: 0.9, previous: nil) == .black,
+              "亮背景用黑")
+        // 迟滞：已在白色状态下，亮度小幅回升不应立刻翻黑。
+        check(AdaptiveDockLabel.unifiedTextColor(luminance: 0.5, previous: true) == .white,
+              "迟滞：0.5 仍保持白，避免临界闪烁")
+        check(AdaptiveDockLabel.unifiedTextColor(luminance: 0.6, previous: true) == .black,
+              "超过 0.57 才翻黑")
+        // 无法采样时回退为白，不产生黑块。
+        check(AdaptiveDockLabel.unifiedTextColor(luminance: .nan, previous: nil) == .white,
+              "采样失败回退为白")
+        print(failures == 0 ? "Dock ink color: verified" : "Dock ink color: \(failures) failure(s)")
+        return failures == 0
+    }
+
     /// 校验「激活应用时把它的窗口搬到当前桌面」的偏好键：默认关闭、可持久化，
     /// 以及系统开关的读法（缺失按「开」处理，保守提示）。
     @MainActor static func checkActivatedAppMove() -> Bool {
