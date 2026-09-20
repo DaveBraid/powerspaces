@@ -189,31 +189,32 @@ extension DockPanel: NSMenuDelegate {
     /// （实测只能看到「更改程序坞颜色 / 新建窗口 / 固定」三项）。
     /// 改成以屏幕坐标调用后菜单是独立的，可以超出面板高度、完整显示。
     private func popUpMenu(_ menu: NSMenu, from button: NSButton) {
-        // 让菜单先算出真实尺寸，否则贴边计算会用到 0 尺寸。
+        let gap: CGFloat = 6
+        // 换算到屏幕坐标（左下原点）；程序坞面板不缩放，直接转换即可。
+        let inWindow = button.convert(button.bounds, to: nil)
+        let onScreen = button.window?.convertToScreen(inWindow) ?? inWindow
+        // 先让菜单算出真实尺寸，否则贴边计算会用到 0 尺寸。
         menu.update()
         let size = menu.size
-        // 锚点取**鼠标当前所在点**（屏幕坐标）：不依赖视图→窗口→屏幕的多次换算，
-        // 多显示器、不同缩放、面板坐标翻转都不会算错。实测用 convertToScreen 在
-        // 双屏 + 2x 缩放下会把点算到屏幕外。
-        let screen = button.window?.screen ?? NSScreen.main
-        var point = NSEvent.mouseLocation
-        if let visible = screen?.visibleFrame {
-            let gap: CGFloat = 4
-            // 水平停靠：以指针为中心横向展开；纵向放在指针靠屏幕内侧的一边。
-            point.x = min(max(point.x - size.width / 2, visible.minX + gap),
-                          visible.maxX - size.width - gap)
-            let opensDown = point.y > visible.midY
-            point.y = opensDown ? point.y - size.height - gap : point.y + gap
-            if opensDown, point.y < visible.minY + gap { point.y = visible.minY + gap }
+        let edgeGap: CGFloat = 4
+        var point: NSPoint
+        switch Preferences.shared.barPosition {
+        case .top, .bottom:
+            // 水平停靠：横向对中图标，纵向落在图标靠屏幕内侧的一边，留出间隙。
+            point = NSPoint(x: onScreen.midX - size.width / 2, y: onScreen.midY)
+            if let visible = (button.window?.screen ?? NSScreen.main)?.visibleFrame {
+                let opensDown = onScreen.midY > visible.midY
+                point.y = opensDown ? onScreen.minY - size.height - edgeGap
+                                    : onScreen.maxY + edgeGap
+                point.x = min(max(point.x, visible.minX + edgeGap),
+                              visible.maxX - size.width - edgeGap)
+            }
+        case .left:
+            point = NSPoint(x: onScreen.maxX + gap, y: onScreen.midY - size.height / 2)
+        case .right:
+            point = NSPoint(x: onScreen.minX - size.width - gap, y: onScreen.midY - size.height / 2)
         }
-        // 用 AppKit 标准的上下文菜单入口：不走 `positioning:` 参数，因此不会被
-        // 「锚定视图/窗口」的高度约束压成几项 + 滚动箭头（原先 `in: button` 与
-        // `in: nil` 都实测只显示 3 项）。事件仅为提供位置，动作由菜单自己分发。
-        let event = NSEvent.mouseEvent(with: .rightMouseDown, location: point,
-                                       modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                                       windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1,
-                                       pressure: 1) ?? NSEvent()
-        NSMenu.popUpContextMenu(menu, with: event, for: button)
+        menu.popUp(positioning: nil, at: point, in: nil)
     }
 
     private func strategyItem(_ title: String, _ kind: StrategyKind,

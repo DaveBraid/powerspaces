@@ -131,17 +131,7 @@ final class DockButton: NSButton {
             extraDots.append(dot)
         }
         for dot in extraDots { dot.isHollow = false }
-        // 标记可能是这里新建的，而面板的颜色补发已经发生过——必须自己套用当前墨色，
-        // 否则新点会保持默认白（实测漏掉后最右边一个点仍是白色）。
-        applyCurrentInkColor()
         needsLayout = true
-    }
-
-    /// 把面板当前的统一墨色套用到本按钮的所有标记上。
-    private func applyCurrentInkColor() {
-        let ink = DockPanel.unifiedInkColor
-        runningDot?.applyInkColor(ink)
-        for dot in extraDots { dot.applyInkColor(ink) }
     }
 
     /// 兼容原有单点调用：`true` 等价于 `.running`。
