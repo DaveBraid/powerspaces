@@ -189,32 +189,35 @@ extension DockPanel: NSMenuDelegate {
     /// （实测只能看到「更改程序坞颜色 / 新建窗口 / 固定」三项）。
     /// 改成以屏幕坐标调用后菜单是独立的，可以超出面板高度、完整显示。
     private func popUpMenu(_ menu: NSMenu, from button: NSButton) {
-        let gap: CGFloat = 6
-        // 换算到屏幕坐标（左下原点）；程序坞面板不缩放，直接转换即可。
-        let inWindow = button.convert(button.bounds, to: nil)
-        let onScreen = button.window?.convertToScreen(inWindow) ?? inWindow
-        // 先让菜单算出真实尺寸，否则贴边计算会用到 0 尺寸。
+        // 先让菜单算出真实尺寸；贴边计算必须用它，否则会用到 0。
         menu.update()
         let size = menu.size
-        let edgeGap: CGFloat = 4
-        var point: NSPoint
-        switch Preferences.shared.barPosition {
-        case .top, .bottom:
-            // 水平停靠：横向对中图标，纵向落在图标靠屏幕内侧的一边，留出间隙。
-            point = NSPoint(x: onScreen.midX - size.width / 2, y: onScreen.midY)
-            if let visible = (button.window?.screen ?? NSScreen.main)?.visibleFrame {
-                let opensDown = onScreen.midY > visible.midY
-                point.y = opensDown ? onScreen.minY - size.height - edgeGap
-                                    : onScreen.maxY + edgeGap
-                point.x = min(max(point.x, visible.minX + edgeGap),
-                              visible.maxX - size.width - edgeGap)
+        // 锚点取**按钮自身的屏幕矩形**，不读 `NSEvent.mouseLocation`：合成事件下后者会返回
+        // 错误位置（实测 y=45，而图标在屏幕底部），真实鼠标下虽然正确但没必要冒这个险。
+        let buttonInWindow = button.convert(button.bounds, to: nil)
+        let buttonOnScreen = button.window?.convertToScreen(buttonInWindow) ?? buttonInWindow
+        // `popUp(positioning:at:in:)` 把这个点当作**菜单左上角**向下展开，
+        // 所以要让菜单底边贴住图标上沿（并夹进屏幕可见区）。
+        let screen = button.window?.screen ?? NSScreen.main
+        let gap: CGFloat = 8
+        var anchor = NSPoint(x: buttonOnScreen.midX - size.width / 2, y: buttonOnScreen.maxY + gap)
+        if let visible = screen?.visibleFrame {
+            anchor.x = min(max(anchor.x, visible.minX + gap), visible.maxX - size.width - gap)
+            if anchor.y + size.height > visible.maxY {
+                // 上方放不下就翻到图标下方（顶边贴住图标下沿）。
+                anchor.y = max(visible.minY + gap, buttonOnScreen.minY - size.height - gap)
             }
-        case .left:
-            point = NSPoint(x: onScreen.maxX + gap, y: onScreen.midY - size.height / 2)
-        case .right:
-            point = NSPoint(x: onScreen.minX - size.width - gap, y: onScreen.midY - size.height / 2)
+            anchor.y = min(max(anchor.y, visible.minY + gap), visible.maxY)
         }
-        menu.popUp(positioning: nil, at: point, in: nil)
+        // 容器必须传**宿主视图**：`in: nil` 时 AppKit 会把菜单压到约 3 项并加滚动箭头
+        // （实测 12 项 246pt 只画出 3 项，而落点本身是对的）。传入按钮后菜单完整展开。
+        guard let window = button.window else {
+            menu.popUp(positioning: nil, at: anchor, in: nil)
+            return
+        }
+        // 屏幕坐标 → 窗口坐标后再交给 AppKit。
+        let anchorInWindow = window.convertFromScreen(NSRect(origin: anchor, size: .zero)).origin
+        menu.popUp(positioning: nil, at: anchorInWindow, in: button)
     }
 
     private func strategyItem(_ title: String, _ kind: StrategyKind,
