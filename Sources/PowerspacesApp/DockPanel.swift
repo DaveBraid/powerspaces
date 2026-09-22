@@ -348,8 +348,8 @@ final class DockPanel: NSPanel {
         // cross padding. Cross axis = top/bottom for a horizontal bar, left/right
         // for a vertical one.
         stack.edgeInsets = vertical
-            ? NSEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
-            : NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+            ? NSEdgeInsets(top: 12 * adaptiveScale, left: 0, bottom: 12 * adaptiveScale, right: 0)
+            : NSEdgeInsets(top: 0, left: 12 * adaptiveScale, bottom: 0, right: 12 * adaptiveScale)
         // Center icons across the bar so they stay centered when "Dock height" (or
         // the hover headroom in `panelSize`) makes the bar/window thicker than an
         // icon. The stack is pinned to the bar's cross *center* (not the window's) in
@@ -403,8 +403,8 @@ final class DockPanel: NSPanel {
     /// The visible bar's thickness: the user's "Dock height", but never thinner
     /// than its contents, so the smallest setting hugs the icons exactly.
     private func barThickness() -> CGFloat {
-        max(CGFloat(Preferences.shared.dockHeight),
-            (magnificationItems.isEmpty ? contentCross() : magnificationRestCross) + 2 * (CGFloat(Preferences.shared.runningDotGap) + 10))
+        max(CGFloat(Preferences.shared.dockHeight) * adaptiveScale,
+            (magnificationItems.isEmpty ? contentCross() : magnificationRestCross) + 2 * (CGFloat(Preferences.shared.runningDotGap) * adaptiveScale + max(4, 10 * adaptiveScale)))
     }
 
     /// Frames the blur to `barThickness` across and the full window length along
@@ -633,7 +633,7 @@ final class DockPanel: NSPanel {
         // The 2s poll calls this constantly. Rebuilding the buttons every time
         // tears down the one under the cursor mid-hover, restarting its magnify
         // animation. Only rebuild when the contents actually changed.
-        guard apps != self.apps else { return }
+        guard apps != self.apps || abs(fittingScale(for: apps) - adaptiveScale) > 0.0001 else { return }
         WindowHoverPreview.shared.close(for: self)
         resetMagnification()
         let prefs = Preferences.shared
@@ -643,7 +643,7 @@ final class DockPanel: NSPanel {
         suppressAddAnimationOnce = false
         // Animate only genuine arrivals/departures, never the initial populate or
         // a Space switch (the whole list changing at once).
-        let canAnimate = animateChanges && !self.apps.isEmpty && prefs.iconAnimationSpeed > 0.001
+        let canAnimate = abs(fittingScale(for: apps) - adaptiveScale) < 0.0001 && animateChanges && !self.apps.isEmpty && prefs.iconAnimationSpeed > 0.001
             && !SystemDisplay.reduceMotion // skip join/leave animation under Reduce Motion
         // Leaving wins when both happen at once: play the departures out, then the
         // follow-up rebuild brings any arrivals in (without animating them).
@@ -666,6 +666,44 @@ final class DockPanel: NSPanel {
         rebuild(apps: apps)
     }
 
+    private var adaptiveScale: CGFloat = 1
+    private var effectiveIconSize: CGFloat { CGFloat(Preferences.shared.iconSize) * adaptiveScale }
+
+    /// 用静止尺寸预算所属屏幕的长轴；标题、分隔线和悬停最大扩张一并计入。
+    private func fittingScale(for apps: [DockApp]) -> CGFloat {
+        guard let screen = boundScreen else { return 1 }
+        let prefs = Preferences.shared
+        let vertical = prefs.barPosition.isVertical
+        let side = CGFloat(prefs.iconSize)
+        var length: CGFloat = 24 // 两端内边距，与 applyOrientation 一致。
+        var count = apps.count
+        for app in apps {
+            let labeled = DockRefresher.labelsWindows(mode: prefs.windowDisplayMode.spaceKitMode,
+                isLauncher: app.isLauncher,
+                windowCount: prefs.showsWindowLabel(windowCount: app.windowCount) ? 2 : 1)
+            length += !vertical && labeled ? labelWidth(for: app, side: side) : side
+        }
+        let pins = apps.contains { $0.isPinned || $0.isLauncher }
+        let running = apps.contains { !$0.isPinned && !$0.isLauncher && !$0.isFullscreenItem }
+        let dividers = (pins && running && prefs.dockDividerEnabled ? 1 : 0)
+            + (apps.contains { $0.isFullscreenItem } ? 1 : 0)
+        count += dividers
+        length += CGFloat(dividers) * (CGFloat(prefs.dockDividerThickness) + 2 * CGFloat(prefs.dockDividerGap))
+        var fixed: CGFloat = 2 * opticalInset + 24 // 屏幕两端各留 12 点。
+        if prefs.desktopIndicatorEnabled && prefs.desktopIndicatorPosition.isInsideDock {
+            updateDesktopIndicator()
+            let size = desktopIndicator.fittingSize
+            fixed += vertical ? size.height : size.width
+            count += 1
+        }
+        length += CGFloat(max(0, count - 1)) * CGFloat(prefs.iconSpacing)
+        // 正弦变形两端的最大增量，预留后悬停无需反向压缩静止图标。
+        let expansion = prefs.hoverEnabled ? side * CGFloat(max(0, prefs.hoverScale - 1)) / sin(.pi / 12) : 0
+        let available = vertical ? screen.visibleFrame.height : screen.visibleFrame.width
+        return DockAdaptiveSizing.scale(available: available, content: length, fixed: fixed,
+                                        hoverExpansion: expansion)
+    }
+
     /// Tear down and rebuild the icon stack for `apps`, then resize the window to
     /// fit. When `animatingIn` lists arriving `slotKey`s, their buttons start
     /// collapsed + hidden and `animateAddition` opens them instead of resizing
@@ -673,7 +711,11 @@ final class DockPanel: NSPanel {
     /// also calls it last.
     private func rebuild(apps: [DockApp], animatingIn entering: Set<String> = []) {
         let prefs = Preferences.shared
-        let side = CGFloat(prefs.iconSize)
+        resetMagnification()
+        adaptiveScale = fittingScale(for: apps)
+        stack.spacing = CGFloat(prefs.iconSpacing) * adaptiveScale
+        applyOrientation()
+        let side = effectiveIconSize
         let dim = CGFloat(prefs.dimLevel)
         // 圆点总是显示运行状态；旧的边框样式可叠加，固定的未运行项仍变灰。
         let boxed = prefs.runningIndicator == .boxed
@@ -701,8 +743,8 @@ final class DockPanel: NSPanel {
         for (app, slotKey) in zip(apps, keys) {
             if app.isFullscreenItem, !insertedFullscreenDivider {
                 let divider = DockDividerView(verticalDock: prefs.barPosition.isVertical,
-                    length: side * CGFloat(prefs.dockDividerLength), gap: CGFloat(prefs.dockDividerGap), crossSize: side,
-                    thickness: CGFloat(prefs.dockDividerThickness))
+                    length: side * CGFloat(prefs.dockDividerLength), gap: CGFloat(prefs.dockDividerGap) * adaptiveScale, crossSize: side,
+                    thickness: CGFloat(prefs.dockDividerThickness) * adaptiveScale)
                 stack.addArrangedSubview(divider)
                 divider.align(to: effect)
                 insertedFullscreenDivider = true // 全屏分区非空才显示，独立于固定项分隔线开关。
@@ -710,8 +752,8 @@ final class DockPanel: NSPanel {
             if !app.isFullscreenItem, hasPins, !insertedDivider, !app.isPinned, !app.isLauncher {
                 if prefs.dockDividerEnabled {
                     let divider = DockDividerView(verticalDock: prefs.barPosition.isVertical,
-                        length: side * CGFloat(prefs.dockDividerLength), gap: CGFloat(prefs.dockDividerGap), crossSize: side,
-                        thickness: CGFloat(prefs.dockDividerThickness))
+                        length: side * CGFloat(prefs.dockDividerLength), gap: CGFloat(prefs.dockDividerGap) * adaptiveScale, crossSize: side,
+                        thickness: CGFloat(prefs.dockDividerThickness) * adaptiveScale)
                     stack.addArrangedSubview(divider)
                     divider.align(to: effect)
                 }
@@ -727,7 +769,7 @@ final class DockPanel: NSPanel {
             let labeled = DockRefresher.labelsWindows(
                 mode: prefs.windowDisplayMode.spaceKitMode, isLauncher: app.isLauncher,
                 windowCount: prefs.showsWindowLabel(windowCount: app.windowCount) ? 2 : 1)
-            let width = labeled ? labelWidth(for: app, side: side) : side
+            let width = labeled ? labelWidth(for: app, side: side, scale: adaptiveScale) : side
             let button = DockButton()
             button.cell = DockItemCell()
             button.usesSharedMagnification = true
@@ -740,6 +782,8 @@ final class DockPanel: NSPanel {
                 if let self { WindowHoverPreview.shared.pointerMoved(for: self) }
             }
             button.restingWidth = width
+            button.layoutScale = adaptiveScale
+            (button.cell as? DockItemCell)?.layoutScale = adaptiveScale
             button.isBordered = false
             // Own our layer from birth (the window is only *implicitly* layer-backed
             // via the blur view). `allowsImplicitAnimation` animates a view's layer
@@ -867,13 +911,13 @@ final class DockPanel: NSPanel {
     /// narrowing back to a plain icon as it drops to one window).
     private func widthsBySlot(for apps: [DockApp]) -> [String: CGFloat] {
         let prefs = Preferences.shared
-        let side = CGFloat(prefs.iconSize)
+        let side = effectiveIconSize
         var result: [String: CGFloat] = [:]
         for (app, key) in zip(apps, slotKeys(of: apps)) {
             let labeled = DockRefresher.labelsWindows(
                 mode: prefs.windowDisplayMode.spaceKitMode, isLauncher: app.isLauncher,
                 windowCount: prefs.showsWindowLabel(windowCount: app.windowCount) ? 2 : 1)
-            result[key] = labeled ? labelWidth(for: app, side: side) : side
+            result[key] = labeled ? labelWidth(for: app, side: side, scale: adaptiveScale) : side
         }
         return result
     }
@@ -958,7 +1002,7 @@ final class DockPanel: NSPanel {
         }
         // Open transparent room (seamlessly — the bar doesn't move) so a poof's
         // growth or a slide's travel is drawn instead of clipped at the window edge.
-        animationCrossPad = CGFloat(prefs.iconSize)
+        animationCrossPad = effectiveIconSize
         setContentSize(panelSize())
         reposition()
         invalidateShadow()
@@ -1023,7 +1067,7 @@ final class DockPanel: NSPanel {
         // Open transparent room (seamlessly — the bar doesn't move) so an arriving
         // icon's poof / slide-in is drawn instead of clipped at the window edge. It's
         // folded into every window size below and closed again when the animation ends.
-        animationCrossPad = CGFloat(prefs.iconSize)
+        animationCrossPad = effectiveIconSize
         let vertical = prefs.barPosition.isVertical
         // The slot opens along the bar's layout axis: width for a horizontal bar,
         // height for a vertical one.
@@ -1168,7 +1212,7 @@ final class DockPanel: NSPanel {
     /// grows along the layout axis: width for a horizontal bar, height for a
     /// vertical one.
     private func openDragGap(at index: Int) {
-        let side = CGFloat(Preferences.shared.iconSize)
+        let side = effectiveIconSize
         let vertical = Preferences.shared.barPosition.isVertical
         let gap = NSView()
         gap.translatesAutoresizingMaskIntoConstraints = false
@@ -1285,11 +1329,11 @@ final class DockPanel: NSPanel {
     }
 
     /// 输入完整标题，按文字真实宽度分配空间；用户宽度作为上限，短标题收缩，超长窗口标题保留提示。
-    private func labelWidth(for app: DockApp, side: CGFloat) -> CGFloat {
+    private func labelWidth(for app: DockApp, side: CGFloat, scale: CGFloat = 1) -> CGFloat {
         let font = NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: .callout).pointSize,
                                     weight: app.isActive ? .bold : .medium)
         let measured = ceil(((app.title ?? app.name) as NSString).size(withAttributes: [.font: font]).width)
-        return min(CGFloat(Preferences.shared.windowLabelWidth), side * 0.7 + 36 + measured)
+        return min(CGFloat(Preferences.shared.windowLabelWidth), side / scale * 0.7 + 36 + measured) * scale
     }
 
     /// 静止时的屏幕坐标是唯一基准；窗口扩张不改变指针到图标的映射。
@@ -1794,9 +1838,9 @@ final class DockPanel: NSPanel {
             stack.translatesAutoresizingMaskIntoConstraints = true
             stack.autoresizingMask = [.width, .height]
             stack.frame = effect.glassContent.bounds
-            let radius = 3 * CGFloat(prefs.iconSize)
-            let extra = CGFloat(prefs.iconSize * (prefs.hoverScale - 1))
-                / (2 * sin(.pi * CGFloat(prefs.iconSize) / (4 * radius)))
+            let radius = 3 * effectiveIconSize
+            let extra = effectiveIconSize * CGFloat(prefs.hoverScale - 1)
+                / (2 * sin(.pi * effectiveIconSize / (4 * radius)))
             let vertical = prefs.barPosition.isVertical
             magnificationReservedFrame = magnificationRestFrame.insetBy(dx: vertical ? 0 : -ceil(extra),
                                                                          dy: vertical ? -ceil(extra) : 0)
@@ -1814,7 +1858,7 @@ final class DockPanel: NSPanel {
         if target != magnificationTarget {
             magnificationFrom = magnificationProgress
             magnificationTarget = target
-            let difference = CGFloat(prefs.iconSize * (prefs.hoverScale - 1)) * abs(target - magnificationProgress)
+            let difference = effectiveIconSize * CGFloat(prefs.hoverScale - 1) * abs(target - magnificationProgress)
             // 0.12 秒预设保留原型速度；现有快慢偏好按比例作用，0 表示立即完成。
             magnificationDuration = DockMagnification.duration(sizeDifference: difference) * max(0, prefs.hoverAnimation) / 0.12
             magnificationStart = CACurrentMediaTime()
@@ -1919,7 +1963,7 @@ final class DockPanel: NSPanel {
         let probeStart = magnificationRenderProbe == nil ? 0 : CACurrentMediaTime()
         let prefs = Preferences.shared
         let vertical = prefs.barPosition.isVertical
-        let base = CGFloat(prefs.iconSize)
+        let base = effectiveIconSize
         let warp = DockMagnification(base: base, maximum: base * CGFloat(prefs.hoverScale),
                                      progress: magnificationProgress, focus: magnificationFocus)
         var intervals: [(CGFloat, CGFloat)] = []
@@ -2064,7 +2108,8 @@ final class DockPanel: NSPanel {
     private func applyLabel(to button: DockButton, app: DockApp, side: CGFloat) {
         let text = app.title ?? app.name
         let weight: NSFont.Weight = app.isActive ? .bold : .medium
-        let font = NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: .callout).pointSize, weight: weight)
+        let font = NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: .callout).pointSize * adaptiveScale, weight: weight)
+        button.font = font
         button.attributedTitle = NSAttributedString(string: text, attributes: [
             .foregroundColor: Preferences.shared.automaticTitleColor ? NSColor.clear : Preferences.shared.windowLabelTextColor,
             .font: font,
@@ -2102,6 +2147,11 @@ final class DockPanel: NSPanel {
         guard !isContextMenuOpen else { return }
         resetMagnification()
         guard let screen = boundScreen else { return }
+        if !isAnimating, !isReordering, !isExternalDragging,
+           abs(fittingScale(for: apps) - adaptiveScale) > 0.0001 {
+            rebuild(apps: apps)
+            return
+        }
         // `placedOrigin` keeps a tucked-away (auto-hidden) bar off-screen, so a
         // content rebuild from the poll doesn't yank it back into view.
         setFrameOrigin(placedOrigin(forSize: frame.size, on: screen))

@@ -1726,6 +1726,13 @@ h.test("window count follows the current Space only") {
          "the other Space sees its own window")
 }
 
+// 自适应尺寸的独立算例；各方向共用长轴预算。
+h.test("adaptive dock respects screen budget without enlarging user sizes") {
+    h.eq(DockAdaptiveSizing.scale(available: 1000, content: 400, fixed: 40), 1, "short docks keep configured size")
+    h.eq(DockAdaptiveSizing.scale(available: 1000, content: 1600, fixed: 100, hoverExpansion: 200), 0.5, "icons and hover fit together")
+    h.eq(DockAdaptiveSizing.scale(available: 500, content: 1800, fixed: 50), 0.25, "smaller display recomputes from original size")
+}
+
 print("Move to this desktop")
 h.test("moveHere is offered as a strategy and reserved for single-instance apps") {
     // 它不通过应用自身的「新建窗口」路径，因此在分组里与 warn / quitReopen 同类。

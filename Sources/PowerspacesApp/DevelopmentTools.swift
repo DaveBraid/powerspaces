@@ -302,6 +302,23 @@ enum DevelopmentTools {
                 if !removed { failures += 1 }
                 print("Dock window states \(position): correct=\(valid) fullscreenDividerRemoved=\(removed)")
             } else { failures += 1 }
+            let crowded = (0..<80).map { index in
+                DockApp(bundleID: "fit.\(index)", name: "Window title \(index)", pid: nil,
+                        windowCount: 1, isPinnedHere: index < 5)
+            }
+            panel.update(apps: crowded, animateChanges: false)
+            panel.contentView?.layoutSubtreeIfNeeded()
+            let compactGlass = panel.previewGlassFrame
+            let length = position.isVertical ? compactGlass.height : compactGlass.width
+            let limit = position.isVertical ? screen.visibleFrame.height : screen.visibleFrame.width
+            let compact = panel.contentView.map(buttons)?.first?.bounds.height ?? 0
+            panel.update(apps: Array(crowded.prefix(2)), animateChanges: false)
+            panel.contentView?.layoutSubtreeIfNeeded()
+            let restoredIcon = panel.contentView.map(buttons)?.first?.bounds.height ?? 0
+            let fits = length <= limit && compact < CGFloat(prefs.iconSize)
+                && abs(restoredIcon - CGFloat(prefs.iconSize)) < 0.1
+            if !fits { failures += 1 }
+            print("Dock adaptive \(position) labeled=\(labeled): \(fits ? "PASS" : "FAIL") length=\(length)/\(limit) icon=\(compact)->\(restoredIcon)")
             panel.close()
         }
         }

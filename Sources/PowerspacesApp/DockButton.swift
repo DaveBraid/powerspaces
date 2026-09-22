@@ -9,6 +9,7 @@ import SpaceKit
 /// long-press into a left/right drag so the user can reorder the dock.
 /// 标题与图标使用明确分区，避免 NSButtonCell 根据原始大图尺寸挤掉文字。
 final class DockItemCell: NSButtonCell {
+    var layoutScale: CGFloat = 1
     var iconOpacity: CGFloat = 1
 
     /// 只改变图标绘制透明度，运行灯和徽章保留独立状态与可读性。
@@ -28,14 +29,14 @@ final class DockItemCell: NSButtonCell {
     override func imageRect(forBounds rect: NSRect) -> NSRect {
         guard imagePosition == .imageLeading else { return super.imageRect(forBounds: rect) }
         let side = rect.height * 0.7
-        return NSRect(x: rect.minX + 4, y: rect.midY - side / 2, width: side, height: side)
+        return NSRect(x: rect.minX + 4 * layoutScale, y: rect.midY - side / 2, width: side, height: side)
     }
     override func titleRect(forBounds rect: NSRect) -> NSRect {
         guard imagePosition == .imageLeading else { return super.titleRect(forBounds: rect) }
-        let left = imageRect(forBounds: rect).maxX + 8
+        let left = imageRect(forBounds: rect).maxX + 8 * layoutScale
         let height = ceil((font?.ascender ?? 12) - (font?.descender ?? -4)) + 4
         return NSRect(x: left, y: rect.midY - height / 2,
-                      width: max(0, rect.maxX - left - 8), height: height)
+                      width: max(0, rect.maxX - left - 8 * layoutScale), height: height)
     }
 }
 
@@ -44,6 +45,7 @@ final class DockButton: NSButton {
     var onPointerMoved: ((NSPoint) -> Void)? // 即时屏幕坐标，不重用布局前的事件坐标。
     var usesSharedMagnification = false
     var restingWidth: CGFloat = 0
+    var layoutScale: CGFloat = 1 // 拥挤时圆点间距随静止布局缩小，独立于悬停倍率。
     var crossAxisCenteringOffset: CGFloat = 0 {
         didSet {
             if oldValue != crossAxisCenteringOffset { invalidateIntrinsicContentSize(); needsUpdateConstraints = true; needsLayout = true }
@@ -486,7 +488,7 @@ final class DockButton: NSButton {
     var indicatorBand: NSRect {
         guard runningDot != nil || !extraDots.isEmpty else { return .zero }
         let isVertical = Preferences.shared.barPosition.isVertical
-        let gap = CGFloat(Preferences.shared.runningDotGap)
+        let gap = CGFloat(Preferences.shared.runningDotGap) * layoutScale
         let thickness = Preferences.shared.barPosition.isVertical
             ? Self.capsuleThickness : Self.capsuleThickness
         if isVertical {
@@ -509,7 +511,7 @@ final class DockButton: NSButton {
         let markSize: (AdaptiveDockMark) -> NSSize = { mark in
             mark.isHollow ? capsule.size : NSSize(width: size, height: size)
         }
-        let gap = CGFloat(Preferences.shared.runningDotGap)
+        let gap = CGFloat(Preferences.shared.runningDotGap) * layoutScale
         let imageRect = cell?.imageRect(forBounds: bounds) ?? bounds
         windowBadge?.place(relativeTo: imageRect, flipped: isFlipped)
         notificationBadge?.place(relativeTo: imageRect, flipped: isFlipped)
