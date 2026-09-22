@@ -647,3 +647,10 @@ active space 3  fullscreen spaces [489]  display D2D54920
 
 - **冷启动必须单独覆盖**：`notRunning → launchApp → coldLaunch` 绕过移窗分支。上轮“已运行后移窗，再退出重启”没有验证“用户换桌面后从 PS 冷启动”，不能替代用户路径。`moveHere` 冷启动先保存点击桌面的绑定，后台启动，再确认进程归属后激活；点击桌面的 Space ID 必须传递到底层，不能重新套用主屏当前 Space。
 - 复测音乐：先退出并将旧绑定设置为桌面二（180），通过系统快捷键切桌面一并独立确认 ID=5，然后调用正式 `Launcher.dockClick`。记录为 `before 5 running false → launched → after 5 windows [(5583, [5])]`。此前自动化 AX 图标点击未触发启动，因此该证据明确属于正式点击入口的实机调用，未冒充鼠标点击端到端验证。
+
+### 原生 Dock 自动尺寸调研（2026-09-23）
+
+- Apple 的 `device-management/mdm/profiles/com.apple.dock.yaml` 分别声明 `tilesize` 与 `largesize`（设置范围 16–128）；这是配置范围，不能据此断言拥挤布局的实际最小图标尺寸。来源：https://github.com/apple/device-management/blob/release/mdm/profiles/com.apple.dock.yaml 。
+- 本机 macOS 27 Dock 的 Objective-C 元数据存在独立的 `desiredTileSize`、`tileSize`、`largeSize`、`actualLargeSize`，以及 `tileInset`、`distanceBottom/Top/Sides`、`_setMaterialLayerFrame:tileSize:`。可确认期望尺寸、实际尺寸、悬停尺寸与材质几何分开管理；仅凭这些符号不能声称已还原完整空间约束公式或边距常数。
+- PS 当前 `naturalStackSize()` 累加按钮、分割线、标题和间距，`barThickness()` 又取 `dockHeight` 与内容厚度的最大值；缺少按所属屏幕可用长轴空间求实际静止尺寸的步骤。只限制窗口宽度会裁切，只缩图标则会留下过厚玻璃。
+- 同款行为的实现方向：保留用户设定值，按静止内容求不溢出的有效尺寸，并据此联动玻璃、间距、指示灯与交互几何；悬停动画不能反过来触发静止尺寸求解，以免放大/缩小反馈抖动。准确屏幕边距、极端拥挤下限及厚度曲线尚待原生 Dock 对照测量，不能把近似公式标成苹果原算法。
