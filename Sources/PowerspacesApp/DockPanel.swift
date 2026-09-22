@@ -1301,7 +1301,22 @@ final class DockPanel: NSPanel {
     private var magnificationStackSize: NSSize?
     private var magnificationVisibleFrame: NSRect?
     private var magnificationReservedFrame: NSRect?
-    var pointerInteractionFrame: NSRect { magnificationVisibleFrame ?? frame }
+    /// 交互范围由可见玻璃和放大后的图标组成，排除面板为缩放预留的透明区域。
+    var pointerInteractionFrame: NSRect {
+        magnificationItems.reduce(previewGlassFrame) { result, item in
+            guard item.view is DockButton else { return result }
+            return result.union(convertToScreen(item.view.convert(item.view.bounds, to: nil)))
+        }
+    }
+
+    /// 分别命中可见内容，不能把包围矩形中的透明空隙也当作图标。
+    private func containsDockContent(_ point: NSPoint) -> Bool {
+        if previewGlassFrame.contains(point) { return true }
+        return magnificationItems.contains { item in
+            item.view is DockButton
+                && convertToScreen(item.view.convert(item.view.bounds, to: nil)).contains(point)
+        }
+    }
     private var magnificationRestFrame = NSRect.zero
     /// 指示灯条带在玻璃坐标系里的位置；没有指示灯时退回整块玻璃。
     ///
@@ -1514,6 +1529,23 @@ final class DockPanel: NSPanel {
     /// 独立实窗回归：伪退出、同一屏幕坐标、遮挡命中、隐藏复位及追踪区稳定性。
     func checkMagnificationPointerRouting() -> Bool {
         guard let button = dockArrangedSubviews.compactMap({ $0 as? DockButton }).first else { return false }
+        resetMagnification()
+        layoutIfNeeded()
+        let glass = previewGlassFrame
+        let marginPoint: NSPoint
+        switch Preferences.shared.barPosition {
+        case .bottom: marginPoint = NSPoint(x: glass.midX, y: glass.maxY + 1)
+        case .top: marginPoint = NSPoint(x: glass.midX, y: glass.minY - 1)
+        case .left: marginPoint = NSPoint(x: glass.maxX + 1, y: glass.midY)
+        case .right: marginPoint = NSPoint(x: glass.minX - 1, y: glass.midY)
+        }
+        handleMagnificationPointer(marginPoint)
+        let marginRejected = magnificationDisplayLink == nil && pendingMagnificationPoint == nil
+        let glassPoint = NSPoint(x: glass.midX, y: glass.midY)
+        updateMagnificationMouseAcceptance(at: marginPoint)
+        let marginPassesThrough = ignoresMouseEvents
+        updateMagnificationMouseAcceptance(at: glassPoint)
+        resetMagnification()
         previewMagnification()
         let rect = convertToScreen(button.convert(button.bounds, to: nil))
         let point = NSPoint(x: rect.midX, y: rect.midY)
@@ -1559,7 +1591,8 @@ final class DockPanel: NSPanel {
         hideState = .shown
         applyAutoHide() // 模拟隐藏状态测试结束，执行真实 reveal，恢复窗口位置和命中。
         print("Magnification pointer: inside=\(inside) stableFocus=\(stableFocus) tracking=\(stableTracking) covered=\(covered) coverHit=\(coverHit) hidden=\(hidden) fixedWindow=\(fixedWindow) padding=\(passesThrough && restoredHit)")
-        return inside && stableFocus && stableTracking && covered && hidden && fixedWindow && passesThrough && restoredHit
+        print("Magnification visible content: marginRejected=\(marginRejected) passesThrough=\(marginPassesThrough)")
+        return marginRejected && marginPassesThrough && inside && stableFocus && stableTracking && covered && hidden && fixedWindow && passesThrough && restoredHit
     }
 
     /// 跨窗口鼠标事件补足 tracking area 丢失的退出；只收尾已有缩放，不触发进入。
@@ -1691,16 +1724,15 @@ final class DockPanel: NSPanel {
     /// 屏幕矩形只是初筛；可疑退出再查当前最上层可点击窗口，覆盖遮挡且不读 AX。
     private func pointerHitsDock(at point: NSPoint, checkOcclusion: Bool) -> Bool {
         guard isVisible, !ignoresMouseEvents, alphaValue > 0,
-              (magnificationVisibleFrame ?? frame).contains(point) else { return false }
+              containsDockContent(point) else { return false }
         return !checkOcclusion || NSWindow.windowNumber(at: point, belowWindowWithWindowNumber: 0) == windowNumber
     }
 
     /// 扩容窗口的透明预留区不截获点击；跨应用监听负责重新进入时恢复命中。
     func updateMagnificationMouseAcceptance(at point: NSPoint) {
-        guard let visible = magnificationVisibleFrame, magnificationReservedFrame != nil,
-              hideState == .shown, !isContextMenuOpen, !isReordering, !isExternalDragging else { return }
+        guard hideState == .shown, !isContextMenuOpen, !isReordering, !isExternalDragging else { return }
         let wasIgnoring = ignoresMouseEvents
-        ignoresMouseEvents = !visible.contains(point)
+        ignoresMouseEvents = !containsDockContent(point)
         if wasIgnoring, !ignoresMouseEvents, pointerHitsDock(at: point, checkOcclusion: true) {
             handleMagnificationPointer(point)
         }
