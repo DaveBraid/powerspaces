@@ -837,11 +837,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !pollSnapshotInFlight else { scheduleNextPoll(); return }
         detectForegroundChange()
         let generation = refreshGeneration
+        let pinnedBundleIDs = pins.allPinnedBundleIDs()
         pollSnapshotInFlight = true
         pollSnapshotQueue.async { [weak self] in
             let began = ProcessInfo.processInfo.systemUptime
             // 独立 provider 无跨队列共享的可变缓存；布局、归属与所有副作用仍在主线程。
             let snapshot = try? CGSSpaceProvider().snapshot()
+            // 名称解析会访问 LaunchServices 和文件本地化资源，不能留在动画主线程。
+            let bundles = pinnedBundleIDs.union(snapshot?.runningBundleIDs ?? [])
+            var names: [String: String] = [:]
+            for bundle in bundles {
+                if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) {
+                    names[bundle] = AppResolver.displayName(forAppURL: url)
+                }
+            }
+            let resolvedNames = names // 本次快照独享，无长期缓存或跨刷新失效问题。
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.pollSnapshotInFlight = false
@@ -850,7 +860,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard generation == self.refreshGeneration, let snapshot,
                       ProcessInfo.processInfo.systemUptime - began < 1,
                       (try? CGSSpaceProvider().currentSpaceID()) == snapshot.activeSpaceID else { return }
-                let changed = self.refresh(using: snapshot)
+                let changed = self.refresh(using: snapshot, appNames: resolvedNames)
                 self.pollIdleTicks = changed ? 0 : self.pollIdleTicks + 1
             }
         }
@@ -996,7 +1006,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let ownershipSession = UUID().uuidString // 无启动时间的进程不跨 PS 重启恢复。
 
     @discardableResult
-    private func refresh(using suppliedSnapshot: SpaceSnapshot? = nil) -> Bool {
+    private func refresh(using suppliedSnapshot: SpaceSnapshot? = nil, appNames: [String: String]? = nil) -> Bool {
         refreshGeneration &+= 1 // 新事件／显式刷新不能被较早的后台读数覆盖。
         guard let snapshot = suppliedSnapshot ?? (try? provider.snapshot()) else { return false }
         // 记录 Space 是否刚变过：切桌面时前台应用也会变，自动搬移必须把那种情况排除。
@@ -1136,7 +1146,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         && windowlessOwnership.contains(pid, scope: ownershipScope(uuid, info.currentSpaceUUID))
                 },
                 options: options,
-                nameForBundleID: AppDelegate.appName(for:),
+                nameForBundleID: { bundle in
+                    if let appNames { return appNames[bundle] }
+                    return AppDelegate.appName(for: bundle)
+                },
                 titleForWindow: titleReader.title(windowID:pid:)).map { app in
                     let running = app.isPinned ? app.withRunningPID(app.pid ?? app.bundleID.flatMap { runningPIDs[$0] }) : app
                     return running.withOpenWindows(running.isRunning && (running.bundleID.map(bundlesWithWindows.contains)
