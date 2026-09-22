@@ -241,8 +241,10 @@ extension Launcher {
             return warned(target, "could not be moved to this desktop.")
         }
         do {
-            try WindowSpaceMover.assign(pid: pid, to: currentSpace,
+            try WindowSpaceMover.assignAndRemember(pid: pid, to: currentSpace,
                                        confirmedSpaces: provider.spaces(forPID:))
+        } catch WindowSpaceMover.MoveError.assignmentNotSaved {
+            return warned(target, "was moved, but its desktop assignment could not be saved.")
         } catch {
             return warned(target, "could not be moved to this desktop.")
         }

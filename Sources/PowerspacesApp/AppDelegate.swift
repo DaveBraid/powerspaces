@@ -73,13 +73,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch outcome {
         case .moved:
             Log.debug("Activated-app move: \(target.bundleID ?? target.name ?? "?") → space \(snapshot.activeSpaceID)")
+        case .assignmentNotSaved:
+            Log.error("Activated-app move succeeded, but desktop assignment was not saved")
         case .notMoved:
             // 搬不动就什么都不做：不跳桌面、不关窗口、不重试。
             Log.error("Activated-app move failed for \(target.bundleID ?? target.name ?? "?")")
         case .movedAndSwitchedBack:
             // 搬移完成，但应用自己抢了桌面，已切回用户原本所在的桌面（一次可见闪动）。
             Log.debug("Activated-app move: \(target.bundleID ?? target.name ?? "?") — switched the desktop back")
-        case .disabled, .systemAssigned, .unavailable, .spaceChanged, .alreadyHere:
+        case .disabled, .unavailable, .spaceChanged, .alreadyHere:
             break
         }
     }

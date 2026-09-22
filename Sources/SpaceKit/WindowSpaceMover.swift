@@ -2,6 +2,7 @@
 // Copyright © 2026 Sebastian Panman de Wit
 // SPDX-License-Identifier: GPL-3.0-only
 
+import AppKit
 import CoreGraphics
 import Foundation
 
@@ -23,6 +24,8 @@ public enum WindowSpaceMover {
         case apiUnavailable
         /// 调用后重新读取归属仍未到达目标 Space。
         case notMoved
+        /// 窗口已搬移，但桌面记忆未保存。
+        case assignmentNotSaved
     }
 
     private typealias AssignToSpace = @convention(c) (CGSConnectionID, pid_t, UInt64) -> Void
@@ -51,6 +54,25 @@ public enum WindowSpaceMover {
         // 私有接口不返回错误，只能按结果确认：窗口必须都落在目标桌面。
         let landed = confirmedSpaces(pid)
         guard !landed.isEmpty, landed == [targetSpaceID] else { throw MoveError.notMoved }
+        return targetSpaceID
+    }
+
+    /// 搬移确认后覆盖系统桌面记忆；若记忆失败，明确区分已完成的窗口搬移。
+    @discardableResult
+    public static func assignAndRemember(pid: pid_t, to targetSpaceID: SpaceID,
+                                         confirmedSpaces: (pid_t) -> Set<SpaceID>) throws -> SpaceID {
+        try assign(pid: pid, to: targetSpaceID, confirmedSpaces: confirmedSpaces)
+        // 进程分配不会跨退出保存；确认搬移后再覆盖原生 Dock 的持久绑定。
+        guard let bundle = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier else {
+            throw MoveError.assignmentNotSaved
+        }
+        do {
+            try DesktopAssignment.remember(bundleID: bundle, spaceID: targetSpaceID,
+                                           provider: CGSSpaceProvider())
+        } catch {
+            Log.error("Desktop assignment could not be saved: \(bundle): \(error)")
+            throw MoveError.assignmentNotSaved
+        }
         return targetSpaceID
     }
 

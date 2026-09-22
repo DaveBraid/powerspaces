@@ -677,3 +677,5 @@
 
 // 预览卡片上的全屏标记。
 "Full screen" = "Full screen";
+
+"%@ was moved, but its desktop assignment could not be saved." = "%@ was moved, but its desktop assignment could not be saved.";

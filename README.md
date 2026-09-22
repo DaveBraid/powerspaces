@@ -4,7 +4,7 @@
 
 # powerspaces
 
-Automatic activation-based window moves respect explicit desktop assignments made in the system Dock. Change or remove that assignment in the system Dock; PS does not create a separate persistent desktop binding.
+On macOS 27, successful PS moves to another desktop overwrite the app’s native Dock desktop assignment, including activation-based moves when enabled. The new assignment survives quitting and relaunching the app. PS updates both the saved desktop UUID and the current session binding; it does not keep a separate competing assignment file.
 
 **This fork:** macOS 27, English / 简体中文, and native Liquid Glass. [中文 README](README.zh-CN.md) · [Build and installation guide (中文)](docs/zh-CN.md).
 
