@@ -700,8 +700,9 @@ final class DockPanel: NSPanel {
         // 正弦变形两端的最大增量，预留后悬停无需反向压缩静止图标。
         let expansion = prefs.hoverEnabled ? side * CGFloat(max(0, prefs.hoverScale - 1)) / sin(.pi / 12) : 0
         let available = vertical ? screen.visibleFrame.height : screen.visibleFrame.width
-        return DockAdaptiveSizing.scale(available: available, content: length, fixed: fixed,
-                                        hoverExpansion: expansion)
+        let requested = CGFloat(prefs.dockScale)
+        return requested * DockAdaptiveSizing.scale(available: available, content: length * requested,
+            fixed: fixed, hoverExpansion: expansion * requested)
     }
 
     /// Tear down and rebuild the icon stack for `apps`, then resize the window to

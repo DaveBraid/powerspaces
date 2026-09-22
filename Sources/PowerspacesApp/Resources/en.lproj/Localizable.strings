@@ -681,3 +681,13 @@
 "%@ was moved, but its desktop assignment could not be saved." = "%@ was moved, but its desktop assignment could not be saved.";
 
 "%@ could not be assigned to this desktop before launch." = "%@ could not be assigned to this desktop before launch.";
+
+"Overall dock size" = "Overall dock size";
+
+"Overall size adjusts icons, spacing and glass together. The dock automatically shrinks when screen space is limited." = "Overall size adjusts icons, spacing and glass together. The dock automatically shrinks when screen space is limited.";
+
+"Small" = "Small";
+
+"Large" = "Large";
+
+"Dock size and magnification" = "Dock size and magnification";

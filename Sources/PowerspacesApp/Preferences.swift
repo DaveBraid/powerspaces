@@ -128,6 +128,7 @@ final class Preferences: ObservableObject {
     private enum K {
         static let language = "language" // 仅保存 en / zh-Hans，不依赖翻译后的显示名称。
         static let windowPreviewEnabled = "windowPreviewEnabled"
+        static let dockScale = "dockScale"
         static let hoverEnabled = "hoverEnabled"
         static let runningDotGap = "runningDotGap"
         static let dockDividerEnabled = "dockDividerEnabled"
@@ -245,6 +246,7 @@ final class Preferences: ObservableObject {
             // at that exact value instead of an empty "Custom…" dropdown.
             K.windowPreviewEnabled: false, // 预览须主动启用，关闭时不申请屏幕录制。
             K.hoverEnabled: true,
+            K.dockScale: 1.0, // 整体大小 50%–200%，旧配置默认保持原尺寸。
             K.runningDotGap: 5.0, // 图标边框到圆点的留白，单位点，范围 0…20。
             K.dockDividerEnabled: true,
             K.dockDividerThickness: 1.0, // 实际绘制粗细，单位点，范围 0.5–4，默认 1。
@@ -389,6 +391,12 @@ final class Preferences: ObservableObject {
     var dockDividerGap: Double {
         get { min(24, max(0, dbl(K.dockDividerGap))) }
         set { setDbl(min(24, max(0, newValue)), K.dockDividerGap) }
+    }
+
+    /// 整体大小独立保存，不覆盖图标、间距和玻璃厚度的细项设置。
+    var dockScale: Double {
+        get { min(2, max(0.5, dbl(K.dockScale))) }
+        set { setDbl(min(2, max(0.5, newValue)), K.dockScale) }
     }
 
     var hoverScale: Double { get { dbl(K.hoverScale) } set { setDbl(newValue, K.hoverScale) } }

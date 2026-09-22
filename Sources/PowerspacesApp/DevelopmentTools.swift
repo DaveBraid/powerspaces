@@ -745,6 +745,15 @@ enum DevelopmentTools {
         }
         let prefs = Preferences(url: url)
         check(prefs.dockOpacity == 1, "default opacity")
+        check(prefs.dockScale == 1, "old preferences keep original dock size")
+        let originalIcon = prefs.iconSize
+        prefs.dockScale = 1.5
+        check(Preferences(url: url).dockScale == 1.5 && prefs.iconSize == originalIcon,
+              "overall size persists without rewriting icon size")
+        prefs.dockScale = 99
+        check(prefs.dockScale == 2, "overall size maximum")
+        prefs.dockScale = 0
+        check(prefs.dockScale == 0.5, "overall size minimum")
         prefs.runningDotGap = 9
         prefs.dockDividerEnabled = false
         prefs.dockDividerGap = 13

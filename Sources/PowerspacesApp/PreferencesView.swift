@@ -580,20 +580,43 @@ struct PreferencesView: View {
             Section {
                 Toggle(L10n.string("Enable magnification"), isOn: bind(\.hoverEnabled))
                     .help(L10n.string("Magnify icons when the pointer is over the dock."))
+                HStack(alignment: .top, spacing: 28) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(L10n.string("Overall dock size"))
+                            Spacer()
+                            Text("\(Int((prefs.dockScale * 100).rounded()))%")
+                                .monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        Slider(value: bind(\.dockScale), in: 0.5...2, step: 0.01)
+                            .accessibilityLabel(L10n.string("Overall dock size"))
+                        HStack { Text(L10n.string("Small")); Spacer(); Text(L10n.string("Large")) }
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(L10n.string("Magnification"))
+                            Spacer()
+                            Text(String(format: "%.2f×", prefs.hoverScale))
+                                .monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        Slider(value: bind(\.hoverScale), in: 1...2, step: 0.01)
+                            .accessibilityLabel(L10n.string("Magnification"))
+                        HStack { Text(L10n.string("Off")); Spacer(); Text(L10n.string("Large")) }
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .disabled(!prefs.hoverEnabled)
+                }
                 if advanced {
-                    NumericRow(title: L10n.string("Magnification"), help: L10n.string("How much an icon grows on hover (1.0× = no growth)."),
-                               spec: Preferences.hoverScaleSpec,
-                               value: bind(\.hoverScale), isCustom: bind(\.hoverScaleCustom))
-                        .disabled(!prefs.hoverEnabled)
                     NumericRow(title: L10n.string("Animation speed"), help: L10n.string("Scales the native magnification timing relative to 0.12s."),
                                spec: Preferences.hoverAnimationSpec,
                                value: bind(\.hoverAnimation), isCustom: bind(\.hoverAnimationCustom))
                         .disabled(!prefs.hoverEnabled)
                 }
             } header: {
-                Text(L10n.string("Hover"))
+                Text(L10n.string("Dock size and magnification"))
             } footer: {
-                Text(L10n.string("Turn magnification on or off here. Enable Advanced to adjust its maximum scale."))
+                Text(L10n.string("Overall size adjusts icons, spacing and glass together. The dock automatically shrinks when screen space is limited."))
             }
             Section {
                 Toggle(L10n.string("Animate when an app is added"), isOn: bind(\.animateOnAdd))

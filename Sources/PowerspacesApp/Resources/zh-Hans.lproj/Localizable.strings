@@ -681,3 +681,13 @@
 "%@ was moved, but its desktop assignment could not be saved." = "%@ 已移到本桌面，但未能保存桌面分配记忆。";
 
 "%@ could not be assigned to this desktop before launch." = "启动前未能将 %@ 分配到本桌面，请重试。";
+
+"Overall dock size" = "整体大小";
+
+"Overall size adjusts icons, spacing and glass together. The dock automatically shrinks when screen space is limited." = "整体大小同步调整图标、间距和玻璃；屏幕空间不足时，程序坞会自动缩小。";
+
+"Small" = "小";
+
+"Large" = "大";
+
+"Dock size and magnification" = "程序坞大小与放大";
