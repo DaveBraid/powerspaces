@@ -1459,6 +1459,7 @@ final class DockPanel: NSPanel {
             link.isPaused = false
             return
         }
+        previousPointerFrame = nil // 新链接属于新会话，不能延续上次退出前的时间戳。
         let link = container.displayLink(target: magnificationFrameDriver,
             selector: #selector(DockMagnificationFrameDriver.frame(_:)))
         let maximum = Float(min(60, boundScreen?.maximumFramesPerSecond ?? 60)) // 以 60fps 为预算，避免高刷屏额外增加布局负担。
@@ -1972,6 +1973,7 @@ final class DockPanel: NSPanel {
 
     /// 拖拽、重建及隐藏前恢复静止布局并停表，避免与它们争夺尺寸或窗口位置。
     func resetMagnification() {
+        if tracesMagnification { flushPointerFrames() } // 外部重建／隐藏也会停表，必须封口，不能只依赖 tick 的 defer。
         let began = tracesMagnification && !magnificationItems.isEmpty ? CACurrentMediaTime() : 0
         defer { traceMagnificationTransition("exit-restore", began: began) }
         samplesMagnificationPointer = false
