@@ -79,7 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .movedAndSwitchedBack:
             // 搬移完成，但应用自己抢了桌面，已切回用户原本所在的桌面（一次可见闪动）。
             Log.debug("Activated-app move: \(target.bundleID ?? target.name ?? "?") — switched the desktop back")
-        case .disabled, .unavailable, .spaceChanged, .alreadyHere:
+        case .disabled, .systemAssigned, .unavailable, .spaceChanged, .alreadyHere:
             break
         }
     }

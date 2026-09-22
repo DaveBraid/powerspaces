@@ -1932,6 +1932,37 @@ h.test("a failed move is reported and never retried") {
     h.eq(attempts, 1, "and does not retry")
 }
 
+h.test("system Dock assignment uses case insensitive bundle identifiers") {
+    h.ok(ActivatedAppMover.hasSystemDesktopAssignment(bundleID: "com.apple.Music", bindings: ["com.apple.music": "desktop-uuid"]), "Music matches the lowercased system Dock key")
+    h.ok(!ActivatedAppMover.hasSystemDesktopAssignment(bundleID: "com.apple.Music", bindings: ["com.apple.music": ""]), "empty assignment does not block moves")
+    h.ok(!ActivatedAppMover.hasSystemDesktopAssignment(bundleID: "com.apple.Music", bindings: ["other.app": "desktop-uuid"]), "other apps remain independent")
+}
+
+h.test("system Dock assignment takes priority over automatic moves") {
+    let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: [
+        dwin(11, 111, name: "Demo", bundle: "demo.one",
+             rect: CGRect(x: 10, y: 10, width: 400, height: 300), onscreen: false, spaces: [2]),
+    ])
+    var assigned = true
+    var moves = 0
+    var switches = 0
+    var delayed: (() -> Void)?
+    let mover = ActivatedAppMover(isEnabled: { true }, hasSystemAssignment: { $0 == "demo.one" && assigned },
+        available: { true }, move: { _, target, _ in moves += 1; return target },
+        currentSpace: { 2 }, switchBack: { _ in switches += 1; return true },
+        schedule: { _, action in delayed = action })
+    let input = ActivatedAppMover.Input(activeSpaceID: 1,
+        target: AppTarget(bundleID: "demo.one", name: "Demo"), pid: 111, confirmSpaces: { _ in [1] })
+    h.eq(mover.consider(input, snapshot: snapshot), .systemAssigned, "official assignment wins")
+    h.eq(moves, 0, "does not override the assigned desktop")
+    h.ok(delayed == nil, "does not schedule a switch back")
+    assigned = false
+    h.eq(mover.consider(input, snapshot: snapshot), .movedAndSwitchedBack, "removing assignment restores automatic behavior")
+    assigned = true
+    delayed?()
+    h.eq(switches, 0, "assignment made while waiting cancels switch back")
+}
+
 print("Jump modifier")
 h.test("the jump modifier focuses the app's desktop instead of the configured strategy") {
     // 窗口在其他桌面 + 按住跳转键 → 强制 focusOnly，不套用应用自己的新建窗口策略。

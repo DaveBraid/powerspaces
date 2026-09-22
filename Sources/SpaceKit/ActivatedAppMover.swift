@@ -69,6 +69,8 @@ public final class ActivatedAppMover: @unchecked Sendable {
     public enum Outcome: Equatable {
         /// 偏好未开启。
         case disabled
+        /// 系统 Dock 已明确分配桌面，自动移窗不得覆盖。
+        case systemAssigned
         /// 系统未提供搬移接口。
         case unavailable
         /// 当前 Space 刚变过（多半是用户在切桌面），一律不搬。
@@ -81,6 +83,21 @@ public final class ActivatedAppMover: @unchecked Sendable {
         case movedAndSwitchedBack
         /// 没有可搬的窗口，或搬移后未落到当前桌面。
         case notMoved
+    }
+
+    private let hasSystemAssignment: (String) -> Bool
+
+    /// 只读系统 Dock 的持久化分配；每次同步后读取，用户改分配无需重启 PS。
+    public static func hasSystemDesktopAssignment(bundleID: String) -> Bool {
+        let domain = "com.apple.spaces" as CFString
+        CFPreferencesAppSynchronize(domain)
+        guard let bindings = CFPreferencesCopyAppValue("app-bindings" as CFString, domain) as? [String: String] else { return false }
+        return hasSystemDesktopAssignment(bundleID: bundleID, bindings: bindings)
+    }
+
+    /// 系统 Dock 实测把 Music 键写成小写，按 bundle ID 不区分大小写匹配，不能按显示名。
+    public static func hasSystemDesktopAssignment(bundleID: String, bindings: [String: String]) -> Bool {
+        bindings.contains { $0.key.caseInsensitiveCompare(bundleID) == .orderedSame && !$0.value.isEmpty }
     }
 
     private let isEnabled: () -> Bool
@@ -98,6 +115,7 @@ public final class ActivatedAppMover: @unchecked Sendable {
     private let schedule: (TimeInterval, @escaping () -> Void) -> Void
 
     public init(isEnabled: @escaping () -> Bool,
+                hasSystemAssignment: @escaping (String) -> Bool = { hasSystemDesktopAssignment(bundleID: $0) },
                 spaceRecentlyChanged: @escaping () -> Bool = { false },
                 available: @escaping () -> Bool = { WindowSpaceMover.isAvailable },
                 move: ((pid_t, SpaceID, @escaping (pid_t) -> Set<SpaceID>) throws -> SpaceID)? = nil,
@@ -106,6 +124,7 @@ public final class ActivatedAppMover: @unchecked Sendable {
                 settleDelay: TimeInterval = 0.4,
                 schedule: ((TimeInterval, @escaping () -> Void) -> Void)? = nil) {
         self.isEnabled = isEnabled
+        self.hasSystemAssignment = hasSystemAssignment
         self.spaceRecentlyChanged = spaceRecentlyChanged
         self.isAvailable = available
         self.move = move ?? { pid, space, confirm in
@@ -128,6 +147,7 @@ public final class ActivatedAppMover: @unchecked Sendable {
     @discardableResult
     public func consider(_ input: Input, snapshot: SpaceSnapshot) -> Outcome {
         guard isEnabled() else { return .disabled }
+        if let bundle = input.target.bundleID, hasSystemAssignment(bundle) { return .systemAssigned }
         guard isAvailable() else { return .unavailable }
         // 用户在切桌面时前台也会变：这一条把它们排除在外。
         guard !spaceRecentlyChanged() else { return .spaceChanged }
@@ -150,7 +170,8 @@ public final class ActivatedAppMover: @unchecked Sendable {
         // （激活回调在主线程上）。只有确实被带走才切回，代价是一次可见的桌面闪动。
         let alreadyHijacked = currentSpace() != input.activeSpaceID
         schedule(settleDelay) { [weak self] in
-            guard let self, self.currentSpace() != input.activeSpaceID else { return }
+            guard let self, self.isEnabled(), self.currentSpace() != input.activeSpaceID else { return }
+            if let bundle = input.target.bundleID, self.hasSystemAssignment(bundle) { return } // 等待期间新设的系统分配同样优先。
             _ = self.switchBack(input.activeSpaceID)
         }
         return alreadyHijacked ? .movedAndSwitchedBack : .moved

@@ -4,6 +4,8 @@
 
 # powerspaces
 
+Automatic activation-based window moves respect explicit desktop assignments made in the system Dock. Change or remove that assignment in the system Dock; PS does not create a separate persistent desktop binding.
+
 **This fork:** macOS 27, English / 简体中文, and native Liquid Glass. [中文 README](README.zh-CN.md) · [Build and installation guide (中文)](docs/zh-CN.md).
 
 Dock glass transparency is adjustable independently of tint strength. On macOS 27, PS reduces the native glass filter's blur and face fill without fading icons, and preserves its native edge highlights. At 0%, background blur and fill return to system values; native highlights remain unchanged. Automatic window-title colors switch each complete title between black and white according to its average background luminance, with manual colors still available in Settings → Windows.
