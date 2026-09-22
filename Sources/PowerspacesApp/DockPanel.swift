@@ -1462,7 +1462,7 @@ final class DockPanel: NSPanel {
         previousPointerFrame = nil // 新链接属于新会话，不能延续上次退出前的时间戳。
         let link = container.displayLink(target: magnificationFrameDriver,
             selector: #selector(DockMagnificationFrameDriver.frame(_:)))
-        let maximum = Float(min(60, boundScreen?.maximumFramesPerSecond ?? 60)) // 以 60fps 为预算，避免高刷屏额外增加布局负担。
+        let maximum = Float(boundScreen?.maximumFramesPerSecond ?? 60) // 100Hz 屏硬锁 60 会被量化成 50Hz，跟随原生节拍。
         link.preferredFrameRateRange = CAFrameRateRange(minimum: maximum,
                                                        maximum: maximum, preferred: maximum)
         magnificationDisplayLink = link
