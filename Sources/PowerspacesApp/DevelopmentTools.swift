@@ -244,7 +244,7 @@ enum DevelopmentTools {
             let fixed = zip(before, after).allSatisfy {
                 abs(position.isVertical ? $0.x - $1.x : $0.y - $1.y) < 1
             }
-            let grew = zip(items, widths).contains { ($0.widthConstraint?.constant ?? 0) > $1 + 1 }
+            let grew = zip(items, widths).contains { $0.bounds.width > $1 + 1 } // 缩放采用手动设帧，应验证实际尺寸而非已停用的约束。
             func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
             let tree = descendants(panel.contentView!)
             let divider = tree.compactMap { $0 as? DockDividerView }.first

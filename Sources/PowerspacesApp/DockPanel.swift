@@ -1442,6 +1442,11 @@ final class DockPanel: NSPanel {
     private var magnificationPointerSource: () -> NSPoint = { NSEvent.mouseLocation }
     private var magnificationClock: () -> CFTimeInterval = { CACurrentMediaTime() }
     private var magnificationRenderProbe: ((Double, Double, Double) -> Void)?
+    private let tracesMagnification = CommandLine.arguments.contains("--trace-dock-frames")
+    private var pointerFrameTimes: [Double] = []
+    private var pointerFrameCosts: [Double] = []
+    private var previousPointerFrame: CFTimeInterval?
+    private static let frameLogQueue = DispatchQueue(label: "powerspaces.dock-frame-log", qos: .utility)
     private var lastMagnificationGeometry: (focus: CGFloat, progress: CGFloat)?
     private lazy var magnificationFrameDriver = DockMagnificationFrameDriver { [weak self] in
         self?.tickMagnification()
@@ -1449,11 +1454,15 @@ final class DockPanel: NSPanel {
 
     /// 移动及短暂静止期间保持同一显示节拍；空闲暂停后的新输入复用链接。
     private func startMagnificationDisplayLink() {
-        if let link = magnificationDisplayLink { link.isPaused = false; return }
+        if let link = magnificationDisplayLink {
+            if link.isPaused { previousPointerFrame = nil }
+            link.isPaused = false
+            return
+        }
         let link = container.displayLink(target: magnificationFrameDriver,
             selector: #selector(DockMagnificationFrameDriver.frame(_:)))
-        let maximum = Float(boundScreen?.maximumFramesPerSecond ?? 60)
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: min(30, maximum),
+        let maximum = Float(min(60, boundScreen?.maximumFramesPerSecond ?? 60)) // 以 60fps 为预算，避免高刷屏额外增加布局负担。
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: maximum,
                                                        maximum: maximum, preferred: maximum)
         magnificationDisplayLink = link
         link.add(to: .main, forMode: .common)
@@ -1786,6 +1795,19 @@ final class DockPanel: NSPanel {
 
     /// 移动期间每帧采样最新指针；静止 250ms 且过渡完成后暂停，退出动画完成则销毁。
     private func tickMagnification() {
+        let began = tracesMagnification ? CACurrentMediaTime() : 0
+        let recording = tracesMagnification && samplesMagnificationPointer
+        if recording {
+            if let previousPointerFrame { pointerFrameTimes.append((began - previousPointerFrame) * 1000) }
+            previousPointerFrame = began
+        }
+        defer {
+            if recording {
+                pointerFrameCosts.append((CACurrentMediaTime() - began) * 1000)
+                if magnificationDisplayLink == nil || magnificationDisplayLink?.isPaused == true
+                    || pointerFrameCosts.count >= 600 { flushPointerFrames() }
+            }
+        }
         guard !isContextMenuOpen else {
             magnificationDisplayLink?.invalidate()
             magnificationDisplayLink = nil
@@ -1821,6 +1843,22 @@ final class DockPanel: NSPanel {
                 magnificationDisplayLink?.isPaused = true // 不能每处理一帧就暂停，否则下一次唤醒可能错过多个节拍。
             }
         }
+    }
+
+    /// 仅诊断启动时记录真实采样节拍；每段最多 600 帧，离开或暂停后异步写汇总。
+    private func flushPointerFrames() {
+        guard !pointerFrameCosts.isEmpty else { previousPointerFrame = nil; return }
+        let intervals = pointerFrameTimes.sorted(), costs = pointerFrameCosts.sorted()
+        func p95(_ values: [Double]) -> Double {
+            values.isEmpty ? 0 : values[min(values.count - 1, Int(Double(values.count) * 0.95))]
+        }
+        let message = "dock-frames samples=\(costs.count) intervalP95=\(p95(intervals))ms "
+            + "workP95=\(p95(costs))ms gapsOver25ms=\(intervals.filter { $0 > 25 }.count) "
+            + "maxGap=\(intervals.last ?? 0)ms edge=\(Preferences.shared.barPosition.rawValue)"
+        pointerFrameTimes.removeAll(keepingCapacity: true)
+        pointerFrameCosts.removeAll(keepingCapacity: true)
+        previousPointerFrame = nil // 暂停间隔不算作掉帧。
+        Self.frameLogQueue.async { WindowLayoutDiagnostics.record(message) }
     }
 
     private func updateMagnificationProgress() {
@@ -1860,12 +1898,7 @@ final class DockPanel: NSPanel {
                     let width = vertical ? button.restingWidth * scale : along
                     let height = vertical ? along : base * scale
                     crossSize = max(crossSize, vertical ? width : height)
-                    if let constraint = button.widthConstraint, abs(constraint.constant - width) > 0.001 {
-                        constraint.constant = width
-                    }
-                    if let constraint = button.heightConstraint, abs(constraint.constant - height) > 0.001 {
-                        constraint.constant = height
-                    }
+                    // 缩放会话已停用宽高约束，直接设帧即可；保留原始约束供退出时恢复。
                     var desired = item.frame
                     desired.size = NSSize(width: width, height: height)
                     if vertical { desired.origin.y = warp.map(lower) }
@@ -1913,7 +1946,10 @@ final class DockPanel: NSPanel {
             layoutIfNeeded() // 只更新玻璃与窗口；动画项目不再参与全栈约束求解。
             for (item, desired) in zip(magnificationItems, screenFrames) {
                 let rect = stack.convert(convertFromScreen(desired), from: nil)
-                if item.view.frame != rect { item.view.frame = rect }
+                if item.view.frame != rect {
+                    item.view.frame = rect
+                    item.view.needsLayout = true // 手动设帧后刷新指示灯与徽章，不借助失效约束触发布局。
+                }
             }
             stack.layoutSubtreeIfNeeded() // 所有项目一次性提交，不能逐个触发层级布局。
             WindowHoverPreview.shared.reposition()
