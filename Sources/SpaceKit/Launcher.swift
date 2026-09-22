@@ -60,7 +60,7 @@ public struct Launcher {
             raise(windowID: windowID, pid: pid)
             return .focused
         case .launchApp:
-            return coldLaunch(target)
+            return coldLaunch(target, targetSpace: snapshot.activeSpaceID)
         case let .newWindow(kind):
             return newWindow(target, kind: kind, snapshot: snapshot)
         }
@@ -102,7 +102,8 @@ public struct Launcher {
             return WindowAX.isMinimized(axWindow)
         }()
         let action = LaunchEngine.dockClick(decision: decision, isFrontmost: isFrontmost, isMinimized: isMinimized)
-        return perform(action, target: target, newWindowSnapshot: snapshot, preferredDisplay: preferredDisplay)
+        return perform(action, target: target, newWindowSnapshot: snapshot, preferredDisplay: preferredDisplay,
+                       targetSpace: dockSpace ?? snapshot.activeSpaceID)
     }
 
     /// Dock-icon click on *one specific window* — the "Windows" feature shows an
@@ -142,7 +143,7 @@ public struct Launcher {
     /// `.newWindow` branch runs.
     private func perform(_ action: DockClickAction, target: AppTarget,
                          newWindowSnapshot: @autoclosure () throws -> SpaceSnapshot,
-                         preferredDisplay: CGRect? = nil) rethrows -> LaunchOutcome {
+                         preferredDisplay: CGRect? = nil, targetSpace: SpaceID? = nil) rethrows -> LaunchOutcome {
         switch action {
         case let .raise(windowID, pid):
             raise(windowID: windowID, pid: pid)
@@ -151,7 +152,7 @@ public struct Launcher {
             minimize(windowID: windowID, pid: pid)
             return .minimized
         case .launch:
-            return coldLaunch(target, preferredDisplay: preferredDisplay)
+            return coldLaunch(target, preferredDisplay: preferredDisplay, targetSpace: targetSpace)
         case let .newWindow(kind):
             return newWindow(target, kind: kind, snapshot: try newWindowSnapshot(),
                              preferredDisplay: preferredDisplay)

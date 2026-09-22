@@ -142,7 +142,7 @@ extension Launcher {
     @discardableResult
     func placeNewWindowHere(_ target: AppTarget, existing: Set<CGWindowID>,
                             preferredDisplay: CGRect? = nil, focus: Bool = false,
-                            activateApp: Bool = true) -> Bool {
+                            activateApp: Bool = true, targetSpace: SpaceID? = nil) -> Bool {
         let trusted = WindowAX.isTrusted
         let displays = trusted ? DisplayInfo.allDisplayBounds() : []
         let active = preferredDisplay ?? DisplayInfo.activeDisplayBounds()
@@ -155,7 +155,7 @@ extension Launcher {
         let placedHere = pollUntil(timeout: 2.0, interval: 80_000) {
             guard let snapshot = try? provider.snapshot(),
                   let fresh = snapshot.windows(of: target).first(where: {
-                      !existing.contains($0.windowID) && $0.isOn(snapshot.activeSpaceID)
+                      !existing.contains($0.windowID) && $0.isOn(targetSpace ?? snapshot.activeSpaceID)
                   })
             else { return false }
             // Multi-display: move it onto the screen the user is on. A freshly-launched

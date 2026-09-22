@@ -679,3 +679,5 @@
 "Full screen" = "Full screen";
 
 "%@ was moved, but its desktop assignment could not be saved." = "%@ was moved, but its desktop assignment could not be saved.";
+
+"%@ could not be assigned to this desktop before launch." = "%@ could not be assigned to this desktop before launch.";

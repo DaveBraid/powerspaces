@@ -1756,6 +1756,21 @@ h.test("the process-level move reports failure instead of silently doing nothing
     }
 }
 
+h.test("moveHere cold launch stops before opening when assignment is unavailable") {
+    let target = AppTarget(bundleID: "test.ps.nonexistent", name: "Test")
+    let config = StrategyConfig(byBundleID: ["test.ps.nonexistent": AppStrategy(bundleID: "test.ps.nonexistent", strategy: .moveHere)], defaultKind: .warn)
+    var warnings: [String] = []
+    let launcher = Launcher(provider: FakeProvider(snap: SpaceSnapshot(activeSpaceID: 1, windows: [])),
+                            config: config, warn: { warnings.append($0) })
+    do {
+        let outcome = try launcher.dockClick(target: target, forceNew: false, dockSpace: 2)
+        if case .warned(let message) = outcome {
+            h.eq(message, "Test could not be assigned to this desktop before launch.", "failed preflight cannot launch using a stale binding")
+        } else { h.ok(false, "assignment failure must stop the launch") }
+        h.eq(warnings.count, 1, "one clear warning instead of a fallback launch")
+    } catch { h.ok(false, "unexpected snapshot failure") }
+}
+
 print("Move an activated app's windows here")
 h.test("a foreground change is only recognised as a real activation") {
     // 同一应用连续两次轮询：不是新的激活（否则会反复搬）。

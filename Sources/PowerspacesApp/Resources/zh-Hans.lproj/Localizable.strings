@@ -679,3 +679,5 @@
 "Full screen" = "全屏";
 
 "%@ was moved, but its desktop assignment could not be saved." = "%@ 已移到本桌面，但未能保存桌面分配记忆。";
+
+"%@ could not be assigned to this desktop before launch." = "启动前未能将 %@ 分配到本桌面，请重试。";

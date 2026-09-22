@@ -73,7 +73,24 @@ extension Launcher {
     /// That's the "menu bar flips to Finder but no window" first click. Opening a
     /// folder launches Finder AND lands a window on the *current* Space, and needs
     /// no Accessibility, so it works even right after a reinstall resets TCC.
-    func coldLaunch(_ target: AppTarget, preferredDisplay: CGRect? = nil) -> LaunchOutcome {
+    /// 搬到本桌面策略在启动前同步绑定，避免旧分配在进程创建时把桌面带走。
+    func coldLaunch(_ target: AppTarget, preferredDisplay: CGRect? = nil,
+                    targetSpace: SpaceID? = nil) -> LaunchOutcome {
+        var assignedSpace: SpaceID?
+        if config.strategy(for: target.bundleID) == .moveHere {
+            guard let concrete = provider as? CGSSpaceProvider,
+                  let bundle = target.bundleID ?? AppResolver.appURL(for: target).flatMap({ Bundle(url: $0)?.bundleIdentifier }),
+                  let space = targetSpace ?? (try? provider.snapshot())?.activeSpaceID else {
+                return warned(target, "could not be assigned to this desktop before launch.")
+            }
+            do {
+                try DesktopAssignment.remember(bundleID: bundle, spaceID: space, provider: concrete)
+                assignedSpace = space
+            } catch {
+                // 保存失败时不继续激活，防止静默跳到旧桌面。
+                return warned(target, "could not be assigned to this desktop before launch.")
+            }
+        }
         // The app's windows before we launch (empty for a truly-closed app), so the
         // placement below can pick out the fresh one.
         let existing = Set(((try? provider.snapshot())?.windows(of: target) ?? []).map(\.windowID))
@@ -83,17 +100,28 @@ extension Launcher {
         // wrong screen first; `placeNewWindowHere(focus:)` then moves it and brings it
         // to the front on the dock's screen, so the user mostly just sees it appear
         // there. Single-display: activate immediately (there's nothing to move).
-        let deferActivation = WindowAX.isTrusted && DisplayInfo.allDisplayBounds().count > 1
+        let deferActivation = assignedSpace != nil || (WindowAX.isTrusted && DisplayInfo.allDisplayBounds().count > 1)
         if target.bundleID == "com.apple.finder" {
             openNewFinderWindow()
             if !deferActivation { activate(target) }
         } else {
             openApp(target, newInstance: false, background: deferActivation)
         }
+        if let space = assignedSpace, let concrete = provider as? CGSSpaceProvider {
+            // 后台创建窗口后再更新进程绑定，激活不能抢在旧 Dock 缓存消退之前。
+            let assigned = pollUntil(timeout: 2.5, interval: 80_000) {
+                guard let snapshot = try? provider.snapshot(),
+                      let window = snapshot.windows(of: target).first(where: { !existing.contains($0.windowID) }) else { return false }
+                return (try? WindowSpaceMover.assign(pid: window.pid, to: space,
+                                                     confirmedSpaces: concrete.spaces(forPID:))) != nil
+            }
+            guard assigned else { return warned(target, "could not be moved to this desktop.") }
+        }
         // Land the fresh window on the dock's screen (multi-display), same as
         // `newWindow`. Without this a cold launch opened on the OS default screen, so
         // clicking a *closed* app in a second screen's dock opened it on the main one.
-        placeNewWindowHere(target, existing: existing, preferredDisplay: preferredDisplay, focus: true)
+        placeNewWindowHere(target, existing: existing, preferredDisplay: preferredDisplay, focus: true,
+                           targetSpace: assignedSpace)
         return .launched
     }
 
