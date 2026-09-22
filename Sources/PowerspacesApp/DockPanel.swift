@@ -1739,6 +1739,8 @@ final class DockPanel: NSPanel {
         }
         if magnificationItems.isEmpty {
             guard point != nil else { return }
+            let began = tracesMagnification ? CACurrentMediaTime() : 0
+            defer { traceMagnificationTransition("enter-setup", began: began) }
             layoutIfNeeded()
             magnificationRestFrame = frame
             magnificationRestCross = contentCross()
@@ -1861,6 +1863,13 @@ final class DockPanel: NSPanel {
         Self.frameLogQueue.async { WindowLayoutDiagnostics.record(message) }
     }
 
+    /// 进出准备与逐帧处理分开统计，避免稳态百分位掩盖单次长停顿。
+    private func traceMagnificationTransition(_ phase: String, began: CFTimeInterval) {
+        guard tracesMagnification, began > 0 else { return }
+        let message = "dock-transition phase=\(phase) workMs=\((CACurrentMediaTime() - began) * 1000)"
+        Self.frameLogQueue.async { WindowLayoutDiagnostics.record(message) }
+    }
+
     private func updateMagnificationProgress() {
         guard magnificationDisplayLink != nil, magnificationProgress != magnificationTarget else { return }
         let fraction = (CACurrentMediaTime() - magnificationStart) / max(0.001, magnificationDuration)
@@ -1963,6 +1972,8 @@ final class DockPanel: NSPanel {
 
     /// 拖拽、重建及隐藏前恢复静止布局并停表，避免与它们争夺尺寸或窗口位置。
     func resetMagnification() {
+        let began = tracesMagnification && !magnificationItems.isEmpty ? CACurrentMediaTime() : 0
+        defer { traceMagnificationTransition("exit-restore", began: began) }
         samplesMagnificationPointer = false
         lastMagnificationPointer = nil
         lastMagnificationMotion = 0

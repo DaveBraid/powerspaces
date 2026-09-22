@@ -828,11 +828,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// One poll: refresh, then grow or reset the backoff based on whether anything
     /// changed, and arm the next tick.
+    private let pollSnapshotQueue = DispatchQueue(label: "powerspaces.poll-snapshot", qos: .utility)
+    private var refreshGeneration: UInt64 = 0
+    private var pollSnapshotInFlight = false
+
+    /// 耗时的 CGS／AX 快照由单独串行队列读取；只允许一个在途任务，事件刷新使旧结果失效。
     private func pollTick() {
+        guard !pollSnapshotInFlight else { scheduleNextPoll(); return }
         detectForegroundChange()
-        let changed = refresh()
-        pollIdleTicks = changed ? 0 : pollIdleTicks + 1
-        scheduleNextPoll()
+        let generation = refreshGeneration
+        pollSnapshotInFlight = true
+        pollSnapshotQueue.async { [weak self] in
+            let began = ProcessInfo.processInfo.systemUptime
+            // 独立 provider 无跨队列共享的可变缓存；布局、归属与所有副作用仍在主线程。
+            let snapshot = try? CGSSpaceProvider().snapshot()
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.pollSnapshotInFlight = false
+                guard !self.isPollingPaused else { return }
+                defer { self.scheduleNextPoll() }
+                guard generation == self.refreshGeneration, let snapshot,
+                      ProcessInfo.processInfo.systemUptime - began < 1,
+                      (try? CGSSpaceProvider().currentSpaceID()) == snapshot.activeSpaceID else { return }
+                let changed = self.refresh(using: snapshot)
+                self.pollIdleTicks = changed ? 0 : self.pollIdleTicks + 1
+            }
+        }
     }
 
     private func setupObservers() {
@@ -949,6 +970,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// there's no dock on screen, so the wake-ups would just drain the battery.
     @objc private func suspendPolling() {
         isPollingPaused = true
+        refreshGeneration &+= 1
         pollTimer?.invalidate()
         pollTimer = nil
     }
@@ -974,8 +996,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let ownershipSession = UUID().uuidString // 无启动时间的进程不跨 PS 重启恢复。
 
     @discardableResult
-    private func refresh() -> Bool {
-        guard let snapshot = try? provider.snapshot() else { return false }
+    private func refresh(using suppliedSnapshot: SpaceSnapshot? = nil) -> Bool {
+        refreshGeneration &+= 1 // 新事件／显式刷新不能被较早的后台读数覆盖。
+        guard let snapshot = suppliedSnapshot ?? (try? provider.snapshot()) else { return false }
         // 记录 Space 是否刚变过：切桌面时前台应用也会变，自动搬移必须把那种情况排除。
         // Pids that own at least one window this tick — the shared basis for both
         // window-less treatments (reaping idle instances, and the window-less dock
