@@ -1797,6 +1797,13 @@ h.test("a foreground change is only recognised as a real activation") {
         .isNewActivation, "the first observation counts as an activation")
 }
 
+h.test("a dock move targets the clicked display instead of the other display's active Space") {
+    h.eq(WindowSpaceMover.destinationSpace(dockSpace: 257, snapshotActiveSpace: 180), 257,
+         "secondary-display dock click keeps its own Space")
+    h.eq(WindowSpaceMover.destinationSpace(dockSpace: nil, snapshotActiveSpace: 180), 180,
+         "keyboard and CLI actions retain the active Space fallback")
+}
+
 h.test("an app that only lives on another desktop is moved when activated") {
     // 当前桌面 1；应用只在桌面 2 有窗口 → 搬。
     let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: [

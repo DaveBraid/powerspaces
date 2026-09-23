@@ -19,6 +19,11 @@ import Foundation
 /// 私有符号通过 `dlsym` 动态解析：系统移除它时应用照常运行，只是该策略降级为警告。
 public enum WindowSpaceMover {
 
+    /// 程序坞点击优先使用点击屏幕的桌面；未提供屏幕时才使用快照的活动桌面。
+    public static func destinationSpace(dockSpace: SpaceID?, snapshotActiveSpace: SpaceID) -> SpaceID {
+        dockSpace ?? snapshotActiveSpace
+    }
+
     public enum MoveError: Error {
         /// 系统未提供该私有接口（未来版本可能移除）。
         case apiUnavailable

@@ -103,7 +103,8 @@ public struct Launcher {
         }()
         let action = LaunchEngine.dockClick(decision: decision, isFrontmost: isFrontmost, isMinimized: isMinimized)
         return perform(action, target: target, newWindowSnapshot: snapshot, preferredDisplay: preferredDisplay,
-                       targetSpace: dockSpace ?? snapshot.activeSpaceID)
+                       targetSpace: WindowSpaceMover.destinationSpace(dockSpace: dockSpace,
+                                                                      snapshotActiveSpace: snapshot.activeSpaceID))
     }
 
     /// Dock-icon click on *one specific window* — the "Windows" feature shows an
@@ -115,11 +116,14 @@ public struct Launcher {
     @discardableResult
     public func dockClickWindow(windowID: CGWindowID, pid: pid_t,
                                 target: AppTarget, forceNew: Bool,
-                                preferredDisplay: CGRect? = nil) throws -> LaunchOutcome {
+                                preferredDisplay: CGRect? = nil,
+                                dockSpace: SpaceID? = nil) throws -> LaunchOutcome {
         if forceNew {
             let snapshot = try provider.snapshot()
             return newWindow(target, kind: config.strategy(for: target.bundleID),
-                             snapshot: snapshot, preferredDisplay: preferredDisplay)
+                             snapshot: snapshot, preferredDisplay: preferredDisplay,
+                             targetSpace: WindowSpaceMover.destinationSpace(dockSpace: dockSpace,
+                                                                            snapshotActiveSpace: snapshot.activeSpaceID))
         }
         // Read this window's live AX state once (needs Accessibility; without it
         // both default false, so the click just raises/activates).
@@ -135,7 +139,7 @@ public struct Launcher {
         // The new-window snapshot is only fetched if that branch is actually taken
         // (autoclosure), so the common raise/minimize toggle stays a single AX read.
         return try perform(action, target: target, newWindowSnapshot: try provider.snapshot(),
-                           preferredDisplay: preferredDisplay)
+                           preferredDisplay: preferredDisplay, targetSpace: dockSpace)
     }
 
     /// Carries out a `DockClickAction` (shared by `dockClick` and `dockClickWindow`).
@@ -155,7 +159,7 @@ public struct Launcher {
             return coldLaunch(target, preferredDisplay: preferredDisplay, targetSpace: targetSpace)
         case let .newWindow(kind):
             return newWindow(target, kind: kind, snapshot: try newWindowSnapshot(),
-                             preferredDisplay: preferredDisplay)
+                             preferredDisplay: preferredDisplay, targetSpace: targetSpace)
         }
     }
 

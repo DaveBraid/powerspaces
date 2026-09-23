@@ -37,6 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             _ = self?.launcher.focusMovedWindow(windowID: windowID, pid: pid)
         })
 
+    /// PS 程序坞发起的「搬到本桌面」由启动队列负责；随后到达的激活通知不再重复搬往主屏。
+    private var pendingDockMove: (bundleID: String, time: TimeInterval)?
+
     /// 在已有轮询里检测前台变化：必要时把该应用的窗口搬到当前桌面。
     ///
     /// 不使用 `NSWorkspace.didActivateApplicationNotification`——本机（macOS 27）实测该通知
@@ -57,6 +60,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 判定并（必要时）搬移；结果只记录，不打扰用户。
     private func moveActivatedAppIfNeeded(target: AppTarget, pid: pid_t) {
+        if let pendingDockMove, let bundleID = target.bundleID,
+           bundleID.caseInsensitiveCompare(pendingDockMove.bundleID) == .orderedSame,
+           ProcessInfo.processInfo.systemUptime - pendingDockMove.time < 3 {
+            return
+        }
         guard Preferences.shared.moveActivatedAppToCurrentDesktop,
               let snapshot = try? provider.snapshot() else { return }
         // 确认读数取自真实 provider：搬移后必须复核窗口确实落到当前桌面。
@@ -421,6 +429,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         dock.onSelect = { [weak self] app, forceNew, jump in
             guard let self else { return }
+            if !jump, self.config.strategy(for: app.bundleID) == .moveHere,
+               let bundleID = app.bundleID {
+                self.pendingDockMove = (bundleID, ProcessInfo.processInfo.systemUptime)
+            }
             // A per-window icon ("Windows" feature) carries the exact window to
             // act on; a normal icon routes through the smart-launch decision. The
             // dock's own display is the preferred screen for a new window, and its
@@ -434,7 +446,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let windowID = app.windowID, let pid = app.pid {
                     return try? launcher.dockClickWindow(windowID: windowID, pid: pid,
                                                          target: app.target, forceNew: forceNew,
-                                                         preferredDisplay: bounds)
+                                                         preferredDisplay: bounds, dockSpace: dockSpace)
                 }
                 return try? launcher.dockClick(target: app.target, forceNew: forceNew, jump: jump,
                                                preferredDisplay: bounds, dockSpace: dockSpace)

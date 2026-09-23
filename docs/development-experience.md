@@ -639,6 +639,8 @@ active space 3  fullscreen spaces [489]  display D2D54920
 ### PS 覆盖原生 Dock 的桌面分配（2026-09-23）
 
 - 搬移窗口只改变 Space 归属，不保证它自动升到当前窗口之上。确认搬移后应复用精确窗口的 AX 置顶：PS 程序坞点击先激活应用再置顶；前台激活自动搬移直接置顶，避免二次激活再次触发切桌面。记忆保存失败但窗口已搬成功时仍置顶；搬移失败则不抢焦点。
+- 双屏回归：程序坞点击时虽然用点击屏幕的 Space 分类，`.moveHere` 执行层曾重新采用快照的 `activeSpaceID`。Music、ChatGPT 恰好各自在该 Space，便直接激活而未搬移；日志均为 `alreadyHere`。目标 Space 必须传到搬移层；进程分配成功后还须按点击屏幕移动窗口的物理坐标，否则跨屏窗口可能留在屏幕外。PS 程序坞已发起的搬移不应被随后到达的全局激活通知重复搬回主屏。
+- 用户在更新后按原路径复测：左屏 Music、右屏 ChatGPT 均能搬移并自动置顶。
 
 - 进程级 `CGSProcessAssignToSpace` 只影响当前进程，不能跨退出保存。用户要求 PS 的搬移覆盖原生分配，不能用“原生分配优先”的跳过条件。
 - `com.apple.spaces/app-bindings` 保存稳定 Space UUID；Music 实际 bundle ID 为 `com.apple.Music`，Dock 键为 `com.apple.music`。修改按 bundle ID 忽略大小写，保留其他应用的记录。

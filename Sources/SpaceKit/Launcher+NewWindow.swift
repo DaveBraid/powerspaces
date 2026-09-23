@@ -11,7 +11,7 @@ import Foundation
 /// "land the fresh window on the screen the user is on" placement.
 extension Launcher {
     func newWindow(_ target: AppTarget, kind: StrategyKind, snapshot: SpaceSnapshot,
-                   preferredDisplay: CGRect? = nil) -> LaunchOutcome {
+                   preferredDisplay: CGRect? = nil, targetSpace: SpaceID? = nil) -> LaunchOutcome {
         // Windows of this app that already exist, so we can spot the one we're
         // about to create and make sure it opens on the screen the user is on
         // (and on the desktop the user is on — see `placeNewWindowHere`).
@@ -92,7 +92,9 @@ extension Launcher {
             activate(target)
             return .newWindow(.focusOnly)
         case .moveHere:
-            return moveProcessHere(target: target, snapshot: snapshot)
+            return moveProcessHere(target: target, snapshot: snapshot,
+                                   targetSpace: targetSpace ?? snapshot.activeSpaceID,
+                                   preferredDisplay: preferredDisplay)
         }
     }
 
@@ -226,8 +228,10 @@ extension Launcher {
     ///
     /// 用进程级分配接口（Dock「分配给」同款）：已有窗口立即跟过来，后续新窗口也落在这里。
     /// 失败（接口缺失或系统未接受）时降级为警告，不静默把用户带走。
-    func moveProcessHere(target: AppTarget, snapshot: SpaceSnapshot) -> LaunchOutcome {
-        let currentSpace = snapshot.activeSpaceID
+    func moveProcessHere(target: AppTarget, snapshot: SpaceSnapshot,
+                         targetSpace: SpaceID, preferredDisplay: CGRect? = nil) -> LaunchOutcome {
+        // 点击哪块屏幕的程序坞，就以该屏幕的可见桌面为目标；快照的 activeSpaceID 可能属于另一屏。
+        let currentSpace = targetSpace
         let windows = snapshot.windows(of: target)
         let elsewhere = windows.contains { window in
             !window.spaceIDs.isEmpty && !window.spaceIDs.contains(currentSpace)
@@ -241,18 +245,32 @@ extension Launcher {
               let provider = provider as? CGSSpaceProvider else {
             return warned(target, "could not be moved to this desktop.")
         }
+        let assignmentSaved: Bool
         do {
             try WindowSpaceMover.assignAndRemember(pid: window.pid, to: currentSpace,
                                        confirmedSpaces: provider.spaces(forPID:))
+            assignmentSaved = true
         } catch WindowSpaceMover.MoveError.assignmentNotSaved {
-            activate(target)
-            _ = focusMovedWindow(windowID: window.windowID, pid: window.pid)
-            return warned(target, "was moved, but its desktop assignment could not be saved.")
+            assignmentSaved = false
         } catch {
             return warned(target, "could not be moved to this desktop.")
         }
+        if let preferredDisplay, WindowAX.isTrusted {
+            let displays = DisplayInfo.allDisplayBounds()
+            // Space 归属与物理屏幕坐标相互独立；跨屏搬移后还须把窗口几何移进点击的屏幕。
+            for movedWindow in windows where movedWindow.pid == window.pid && !movedWindow.spaceIDs.isEmpty {
+                guard let element = WindowAX.axWindow(windowID: movedWindow.windowID, pid: window.pid),
+                      let frame = WindowAX.frame(of: element),
+                      let placed = DisplayPlacement.reposition(window: frame, displays: displays,
+                                                               active: preferredDisplay) else { continue }
+                WindowAX.setFrame(placed, of: element)
+            }
+        }
         activate(target)
         _ = focusMovedWindow(windowID: window.windowID, pid: window.pid)
+        if !assignmentSaved {
+            return warned(target, "was moved, but its desktop assignment could not be saved.")
+        }
         return .newWindow(.moveHere)
     }
 }
