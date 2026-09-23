@@ -50,6 +50,7 @@ enum SingleInstance {
         SingleInstanceApp(bundleID: "com.apple.iCal", name: "Calendar"),
         SingleInstanceApp(bundleID: "com.apple.AddressBook", name: "Contacts"),
         SingleInstanceApp(bundleID: "com.apple.mail", name: "Mail"),
+        SingleInstanceApp(bundleID: "com.tencent.xinWeChat", name: "WeChat"),
     ]
 
     /// The strategies offered as a global default for unknown apps. (`appleScript`
@@ -86,8 +87,12 @@ final class StrategyStore {
 
     /// Effective strategy for an app = user override, else shipped code default.
     func effectiveStrategy(for bundleID: String) -> StrategyKind {
-        file.apps?.first { $0.bundleID == bundleID }?.strategy
-            ?? StrategyConfig.defaults.strategy(for: bundleID)
+        if let chosen = file.apps?.first(where: { $0.bundleID == bundleID })?.strategy { return chosen }
+        if bundleID == "com.tencent.xinWeChat",
+           let inherited = StrategyConfig.inheritedSingleInstanceStrategy(from: file.apps ?? []) {
+            return inherited
+        }
+        return StrategyConfig.defaults.strategy(for: bundleID)
     }
 
     /// 旧的逐应用设置不一致时返回 nil，让统一下拉明确显示“已有单独设置”。

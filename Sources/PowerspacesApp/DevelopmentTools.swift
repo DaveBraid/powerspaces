@@ -747,6 +747,13 @@ enum DevelopmentTools {
         let strategyStore = StrategyStore(url: strategiesURL)
         check(strategyStore.effectiveSingleInstanceStrategy() == .warn,
               "single-window apps start with one warning choice")
+        let legacyURL = directory.appendingPathComponent("legacy-config.json")
+        let legacy = StrategyConfig.ConfigFile(apps: StrategyConfig.legacySingleInstanceBundleIDs.map {
+            AppStrategy(bundleID: $0, strategy: .moveHere)
+        })
+        JSONFileStore.writeEncodable(legacy, to: legacyURL)
+        check(StrategyStore(url: legacyURL).effectiveSingleInstanceStrategy() == .moveHere,
+              "legacy unified setting includes WeChat without changing the saved file")
         strategyStore.setStrategy(.moveHere, for: "com.apple.Music")
         check(strategyStore.effectiveSingleInstanceStrategy() == nil,
               "mixed old per-app choices stay visible without migration")

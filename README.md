@@ -1,6 +1,6 @@
 <p align="center">
 
-The Strategies page now offers one behavior picker for the seven known single-window apps. If an older config contains different choices, it shows “Existing individual choices” until you pick a common behavior; other apps’ rules remain intact.
+The Strategies page offers one behavior picker for eight known single-window apps, now including WeChat. If all seven apps in an older config share one choice, WeChat inherits it without rewriting the file; mixed choices still show “Existing individual choices” until you choose a common behavior. Other apps’ rules remain intact.
 
 The Effects page provides adjacent Overall dock size (50–200%) and Magnification sliders. Overall size defaults to 100% and preserves your individual icon, spacing and thickness settings; screen fitting still applies.
 

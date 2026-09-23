@@ -881,8 +881,14 @@ final class DockPanel: NSPanel {
                 if let self { WindowHoverPreview.shared.close(for: self) }
                 if app.isLauncher { self?.onOpenLauncher?() } else { self?.onSelect?(app, forceNew, jump) }
             }
-            button.onRightClick = { [weak self] in self?.showMenu(for: app, from: button) }
-            button.onMiddleClick = { [weak self] in self?.handleMiddleClick(app) }
+            button.onRightClick = { [weak self, weak button] in
+                guard let button, let current = button.app else { return }
+                self?.showMenu(for: current, from: button)
+            }
+            button.onMiddleClick = { [weak self, weak button] in
+                guard let current = button?.app else { return }
+                self?.handleMiddleClick(current)
+            }
             button.onBeginDrag = { [weak self] in self?.beginReorder($0) }
             button.onDragMove = { [weak self] in self?.updateReorder($0, at: $1) }
             button.onEndDrag = { [weak self] in self?.endReorder($0) }

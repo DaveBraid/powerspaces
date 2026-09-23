@@ -547,8 +547,26 @@ h.test("known bundle resolves its configured strategy") {
     h.eq(StrategyConfig.defaults.strategy(for: "com.apple.MobileSMS"), .warn)
     h.eq(StrategyConfig.defaults.strategy(for: "com.apple.systempreferences"), .warn)
     h.eq(StrategyConfig.defaults.strategy(for: "com.apple.mail"), .warn)
+    h.eq(StrategyConfig.defaults.strategy(for: "com.tencent.xinWeChat"), .warn)
     h.eq(StrategyConfig.defaults.strategy(for: "org.mozilla.firefox"), .openArgs)
     h.eq(StrategyConfig.defaults.strategy(for: "com.apple.finder"), .appleScript)
+}
+
+h.test("legacy unified single-instance setting also governs WeChat") {
+    let old = StrategyConfig.legacySingleInstanceBundleIDs.map {
+        AppStrategy(bundleID: $0, strategy: .moveHere)
+    }
+    let file = StrategyConfig.ConfigFile(apps: old)
+    let config = try StrategyConfig.load(from: JSONEncoder().encode(file))
+    h.eq(config.strategy(for: "com.tencent.xinWeChat"), .moveHere)
+    let mixed = old.enumerated().map { index, item in
+        AppStrategy(bundleID: item.bundleID, strategy: index == 0 ? .warn : .moveHere)
+    }
+    let mixedConfig = try StrategyConfig.load(from: JSONEncoder().encode(StrategyConfig.ConfigFile(apps: mixed)))
+    h.eq(mixedConfig.strategy(for: "com.tencent.xinWeChat"), .warn)
+    let explicit = old + [AppStrategy(bundleID: "com.tencent.xinWeChat", strategy: .focusOnly)]
+    let explicitConfig = try StrategyConfig.load(from: JSONEncoder().encode(StrategyConfig.ConfigFile(apps: explicit)))
+    h.eq(explicitConfig.strategy(for: "com.tencent.xinWeChat"), .focusOnly)
 }
 
 h.test("browser openArgs carries --new-window") {
@@ -1760,6 +1778,18 @@ h.test("the process-level move reports failure instead of silently doing nothing
         // 本机若不提供该私有接口，走这条分支也是可接受的降级。
         h.ok(WindowSpaceMover.isAvailable == false,
              "only unavailable-API failure is acceptable here")
+    }
+    var reads = 0
+    do {
+        let space = try WindowSpaceMover.assign(pid: 4242, to: 7, confirmedSpaces: { _ in
+            reads += 1
+            return reads == 1 ? [3] : [7]
+        })
+        h.eq(space, 7, "waits briefly for an asynchronous Space assignment")
+        h.ok(reads >= 2, "checks the actual assignment again")
+    } catch {
+        h.ok(WindowSpaceMover.isAvailable == false,
+             "only unavailable-API failure is acceptable for delayed assignment")
     }
 }
 

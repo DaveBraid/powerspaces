@@ -106,6 +106,22 @@ public struct StrategyConfig: Equatable, Sendable {
 // MARK: - Defaults & loading
 
 extension StrategyConfig {
+    /// 旧版统一下拉保存的七项；新增微信时继承用户已经明确选择的共同策略。
+    public static let legacySingleInstanceBundleIDs = [
+        "com.apple.MobileSMS", "com.apple.systempreferences", "com.apple.Music",
+        "com.apple.reminders", "com.apple.iCal", "com.apple.AddressBook", "com.apple.mail",
+    ]
+
+    /// 七项旧配置都一致时才推断继承值，混合配置保持原意。
+    public static func inheritedSingleInstanceStrategy(from overrides: [AppStrategy]) -> StrategyKind? {
+        let selected = legacySingleInstanceBundleIDs.compactMap { id in
+            overrides.first { $0.bundleID == id }?.strategy
+        }
+        guard selected.count == legacySingleInstanceBundleIDs.count,
+              let first = selected.first, selected.allSatisfy({ $0 == first }) else { return nil }
+        return first
+    }
+
     /// Shipped per-app defaults. Unknown apps fall back to `.newInstance`, which
     /// is right for the common multi-window apps and degrades to "focus" on
     /// single-instance ones.
@@ -149,6 +165,7 @@ extension StrategyConfig {
             AppStrategy(bundleID: "com.apple.iCal", strategy: .warn),
             AppStrategy(bundleID: "com.apple.AddressBook", strategy: .warn),
             AppStrategy(bundleID: "com.apple.mail", strategy: .warn),
+            AppStrategy(bundleID: "com.tencent.xinWeChat", strategy: .warn),
         ]
         let map = Dictionary(uniqueKeysWithValues: entries.map { ($0.bundleID, $0) })
         // The default for unmapped apps must stay a strategy that opens a window on
@@ -176,6 +193,11 @@ extension StrategyConfig {
         let file = try JSONDecoder().decode(ConfigFile.self, from: data)
         var map = StrategyConfig.defaults.byBundleID
         for app in file.apps ?? [] { map[app.bundleID] = app }
+        let wechat = "com.tencent.xinWeChat"
+        if !(file.apps ?? []).contains(where: { $0.bundleID == wechat }),
+           let inherited = inheritedSingleInstanceStrategy(from: file.apps ?? []) {
+            map[wechat] = AppStrategy(bundleID: wechat, strategy: inherited)
+        }
         return StrategyConfig(byBundleID: map, defaultKind: file.defaultStrategy ?? .newInstance)
     }
 

@@ -56,9 +56,12 @@ public enum WindowSpaceMover {
                               confirmedSpaces: (pid_t) -> Set<SpaceID>) throws -> SpaceID {
         guard let assignToSpace else { throw MoveError.apiUnavailable }
         assignToSpace(CGSMainConnectionID(), pid, UInt64(targetSpaceID))
-        // 私有接口不返回错误，只能按结果确认：窗口必须都落在目标桌面。
-        let landed = confirmedSpaces(pid)
-        guard !landed.isEmpty, landed == [targetSpaceID] else { throw MoveError.notMoved }
+        // 私有接口不返回错误且归属更新可能稍晚；有限等待实际窗口归属，避免误报失败。
+        let confirmed = pollUntil(timeout: 0.5, interval: 50_000) {
+            let landed = confirmedSpaces(pid)
+            return !landed.isEmpty && landed == [targetSpaceID]
+        }
+        guard confirmed else { throw MoveError.notMoved }
         return targetSpaceID
     }
 

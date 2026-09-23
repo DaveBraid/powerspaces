@@ -270,6 +270,7 @@
 "Move the pointer to the screen edge the bar hugs (bottom, top, left, or right, matching its Position) to bring it back." = "将指针移到程序坞停靠的屏幕边缘（底部、顶部、左侧或右侧），即可重新显示。";
 "Move the selection" = "移动选择";
 "Music" = "音乐";
+"WeChat" = "微信";
 "New instance (open -n)" = "新建实例（open -n）";
 "New windows" = "新建窗口";
 "New-window strategy" = "新建窗口策略";

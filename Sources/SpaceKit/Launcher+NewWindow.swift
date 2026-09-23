@@ -233,13 +233,29 @@ extension Launcher {
         // 点击哪块屏幕的程序坞，就以该屏幕的可见桌面为目标；快照的 activeSpaceID 可能属于另一屏。
         let currentSpace = targetSpace
         let windows = snapshot.windows(of: target)
+        if let here = windows.first(where: { $0.spaceIDs.contains(currentSpace) }) {
+            // 同一应用可能同时在多个桌面有窗口；已有当前桌面窗口时只需聚焦它。
+            return raise(windowID: here.windowID, pid: here.pid)
+                ? .newWindow(.moveHere) : warned(target, "could not focus its window here.")
+        }
         let elsewhere = windows.contains { window in
             !window.spaceIDs.isEmpty && !window.spaceIDs.contains(currentSpace)
         }
         guard elsewhere else {
-            // 已经在这里或没有窗口可搬：直接聚焦，不打扰。
-            activate(target)
-            return .newWindow(.moveHere)
+            // 进程仍在、窗口已全部关闭：先覆盖旧桌面分配，再请求应用重新开窗。
+            guard let concrete = provider as? CGSSpaceProvider,
+                  let bundle = target.bundleID else {
+                return warned(target, "could not be assigned to this desktop before reopening.")
+            }
+            do {
+                try DesktopAssignment.remember(bundleID: bundle, spaceID: currentSpace, provider: concrete)
+            } catch {
+                return warned(target, "could not be assigned to this desktop before reopening.")
+            }
+            openApp(target, newInstance: false, background: true)
+            let appeared = placeNewWindowHere(target, existing: Set(windows.map(\.windowID)),
+                preferredDisplay: preferredDisplay, focus: true, targetSpace: currentSpace)
+            return appeared ? .newWindow(.moveHere) : newWindowDidNotAppear(target)
         }
         guard let window = windows.first(where: { !$0.isMinimized && !$0.spaceIDs.isEmpty }) ?? windows.first,
               let provider = provider as? CGSSpaceProvider else {
@@ -255,19 +271,18 @@ extension Launcher {
         } catch {
             return warned(target, "could not be moved to this desktop.")
         }
-        if let preferredDisplay, WindowAX.isTrusted {
-            let displays = DisplayInfo.allDisplayBounds()
-            // Space 归属与物理屏幕坐标相互独立；跨屏搬移后还须把窗口几何移进点击的屏幕。
-            for movedWindow in windows where movedWindow.pid == window.pid && !movedWindow.spaceIDs.isEmpty {
-                guard let element = WindowAX.axWindow(windowID: movedWindow.windowID, pid: window.pid),
-                      let frame = WindowAX.frame(of: element),
-                      let placed = DisplayPlacement.reposition(window: frame, displays: displays,
-                                                               active: preferredDisplay) else { continue }
+        activate(target)
+        // Space 更新快于 AX 窗口可操作状态；等窗口可访问后再调位置并置顶。
+        let focused = WindowAX.isTrusted && pollUntil(timeout: 1.6, interval: 80_000) {
+            guard let element = WindowAX.axWindow(windowID: window.windowID, pid: window.pid) else { return false }
+            if let preferredDisplay, let frame = WindowAX.frame(of: element),
+               let placed = DisplayPlacement.reposition(window: frame,
+                   displays: DisplayInfo.allDisplayBounds(), active: preferredDisplay) {
                 WindowAX.setFrame(placed, of: element)
             }
+            return focusMovedWindow(windowID: window.windowID, pid: window.pid)
         }
-        activate(target)
-        _ = focusMovedWindow(windowID: window.windowID, pid: window.pid)
+        guard focused else { return warned(target, "was moved, but its window could not be focused.") }
         if !assignmentSaved {
             return warned(target, "was moved, but its desktop assignment could not be saved.")
         }

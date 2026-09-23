@@ -87,20 +87,16 @@ public struct Launcher {
         Log.debug("dock-click \(target.bundleID ?? target.name ?? "?") — state \(state.label) forceNew=\(forceNew) jump=\(jump)")
         let decision = LaunchEngine.decide(state: state, config: config, target: target,
                                            forceNew: forceNew, jump: jump)
-        let isFrontmost: Bool = {
-            guard case let .focusWindow(_, pid) = decision else { return false }
-            return frontmostPID == pid
+        let selectedWindow: (pid: pid_t, element: AXUIElement?)? = {
+            guard case let .focusWindow(windowID, pid) = decision else { return nil }
+            let element = WindowAX.isTrusted ? WindowAX.axWindow(windowID: windowID, pid: pid) : nil
+            return (pid, element)
         }()
-        // A minimized window must always restore on click, never re-minimize.
-        // Read the live AX state for the targeted window (apps like Finder stay
-        // frontmost while their last window is minimized, so isFrontmost alone
-        // can't tell us). Needs Accessibility; falls back to false otherwise.
-        let isMinimized: Bool = {
-            guard case let .focusWindow(windowID, pid) = decision,
-                  WindowAX.isTrusted,
-                  let axWindow = WindowAX.axWindow(windowID: windowID, pid: pid) else { return false }
-            return WindowAX.isMinimized(axWindow)
-        }()
+        // 应用在前台不代表选中的窗口可见；只有该窗口确为主窗口才允许点击最小化。
+        let isFrontmost = selectedWindow.map {
+            frontmostPID == $0.pid && ($0.element.map(WindowAX.isMain) ?? false)
+        } ?? false
+        let isMinimized = selectedWindow?.element.map(WindowAX.isMinimized) ?? false
         let action = LaunchEngine.dockClick(decision: decision, isFrontmost: isFrontmost, isMinimized: isMinimized)
         return perform(action, target: target, newWindowSnapshot: snapshot, preferredDisplay: preferredDisplay,
                        targetSpace: WindowSpaceMover.destinationSpace(dockSpace: dockSpace,

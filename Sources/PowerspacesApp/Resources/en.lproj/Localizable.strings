@@ -270,6 +270,7 @@
 "Move the pointer to the screen edge the bar hugs (bottom, top, left, or right, matching its Position) to bring it back." = "Move the pointer to the screen edge the bar hugs (bottom, top, left, or right, matching its Position) to bring it back.";
 "Move the selection" = "Move the selection";
 "Music" = "Music";
+"WeChat" = "WeChat";
 "New instance (open -n)" = "New instance (open -n)";
 "New windows" = "New windows";
 "New-window strategy" = "New-window strategy";

@@ -276,6 +276,14 @@ final class DockButton: NSButton {
     /// quick click still launches the app, short enough to feel deliberate.
     private static let holdThreshold: TimeInterval = 0.3
 
+    /// 辅助功能“按下”与普通点击进入同一应用路由；NSButton 默认 action 在这里未接线。
+    override func accessibilityPerformPress() -> Bool {
+        guard isEnabled, let app else { return false }
+        if !app.isLauncher && app.windowCount == 0 { playLaunchFeedback() }
+        onActivate?(app, false, false)
+        return true
+    }
+
     /// Distinguishes a click from a reorder: hold the icon down past
     /// `holdThreshold`, then slide left or right. A short press falls through to
     /// `onActivate`. We run our own event loop (instead of leaning on
