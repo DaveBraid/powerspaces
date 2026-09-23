@@ -268,6 +268,33 @@ extension Launcher {
             assignmentSaved = true
         } catch WindowSpaceMover.MoveError.assignmentNotSaved {
             assignmentSaved = false
+        } catch WindowSpaceMover.MoveError.notMoved {
+            // 少数应用把窗口锁在原屏幕的 Space；先移到目标屏幕，再重试进程归属。
+            guard let preferredDisplay, WindowAX.isTrusted,
+                  windows.filter({ $0.pid == window.pid && !$0.spaceIDs.isEmpty }).count == 1,
+                  !provider.spaces(forPID: window.pid).contains(currentSpace),
+                  let element = WindowAX.axWindow(windowID: window.windowID, pid: window.pid),
+                  let original = WindowAX.frame(of: element),
+                  let placed = DisplayPlacement.reposition(window: original,
+                      displays: DisplayInfo.allDisplayBounds(), active: preferredDisplay) else {
+                return warned(target, "could not be moved to this desktop.")
+            }
+            WindowAX.setFrame(placed, of: element)
+            guard let actual = WindowAX.frame(of: element),
+                  preferredDisplay.contains(CGPoint(x: actual.midX, y: actual.midY)) else {
+                WindowAX.setFrame(original, of: element)
+                return warned(target, "could not be moved to this desktop.")
+            }
+            do {
+                try WindowSpaceMover.assignAndRemember(pid: window.pid, to: currentSpace,
+                                           confirmedSpaces: provider.spaces(forPID:))
+                assignmentSaved = true
+            } catch WindowSpaceMover.MoveError.assignmentNotSaved {
+                assignmentSaved = false
+            } catch {
+                WindowAX.setFrame(original, of: element)
+                return warned(target, "could not be moved to this desktop.")
+            }
         } catch {
             return warned(target, "could not be moved to this desktop.")
         }
