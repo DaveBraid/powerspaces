@@ -142,6 +142,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// triggers the disruptive defaults-write + Dock restart when this toggle is
     /// what changed.
     private var appliedHideAppleDock = false
+    private var pendingSystemDockHide: Bool?
+    private var systemDockTransitionGeneration = 0
     /// The "faster desktop switch" states we've actually applied (swipe-override
     /// and keyboard-override), so a generic `preferencesDidChange` only re-applies
     /// the one that flipped — mirrors `appliedHideAppleDock`.
@@ -544,7 +546,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let dock = DockPanel(screen: screen)
             configure(dock, displayUUID: info.displayUUID)
             docks[info.displayUUID] = dock
-            dock.show()
             dock.applyAppearance()
         }
     }
@@ -744,9 +745,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Only touch the system Dock when this specific toggle flipped — every
         // preference change posts this notification, and rewriting defaults +
         // restarting the Dock on each one would be jarring.
-        if Preferences.shared.hideAppleDock != appliedHideAppleDock {
-            appliedHideAppleDock = Preferences.shared.hideAppleDock
-            AppleDockController.apply(hidden: appliedHideAppleDock)
+        let hideAppleDock = Preferences.shared.hideAppleDock
+        if hideAppleDock != (pendingSystemDockHide ?? appliedHideAppleDock) {
+            transitionSystemDock(hidden: hideAppleDock)
         }
         // Same "only act when this toggle flipped" guard for the two overrides —
         // compared against the last *preference* value (not the applied engine state)
@@ -764,10 +765,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyLauncherHotkey() // the launcher shortcut may have changed
         statusItemController.sync() // the glyph may have changed — create / remove / restyle the item
         restartPoll() // the interval may have changed
-        docks.values.forEach { $0.applyAppearance() }
-        // The "dock screens" setting may have flipped; refresh() reconciles which
-        // displays have a dock.
-        refresh()
+        if pendingSystemDockHide == nil {
+            docks.values.forEach { $0.applyAppearance() }
+            // The "dock screens" setting may have flipped; refresh() reconciles which
+            // displays have a dock.
+            refresh()
+        }
+    }
+
+    /// 系统 Dock 重启前淡出 PS，待系统工作区稳定并重排面板后再淡入，避免底边闪现。
+    private func transitionSystemDock(hidden: Bool) {
+        pendingSystemDockHide = hidden
+        systemDockTransitionGeneration &+= 1
+        let generation = systemDockTransitionGeneration
+        let visible = docks.values.filter { $0.isVisible && !$0.fullyHidden }
+        guard !visible.isEmpty, !SystemDisplay.reduceMotion else {
+            finishSystemDockTransition(generation: generation)
+            return
+        }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.12
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            visible.forEach { $0.animator().alphaValue = 0 }
+        }, completionHandler: { [weak self] in
+            MainActor.assumeIsolated { self?.finishSystemDockTransition(generation: generation) }
+        })
+    }
+
+    /// 淡出完成后只应用最新设置，避免短时间连点使旧动画覆盖新状态。
+    private func finishSystemDockTransition(generation: Int) {
+        guard generation == systemDockTransitionGeneration else { return }
+        let wanted = Preferences.shared.hideAppleDock
+        AppleDockController.apply(hidden: wanted)
+        appliedHideAppleDock = wanted
+        // Dock 进程重启后工作区更新稍晚于 killall 返回；只延迟这一轮面板定位。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, generation == self.systemDockTransitionGeneration else { return }
+                self.pendingSystemDockHide = nil
+                self.docks.values.forEach { $0.applyAppearance() }
+                self.refresh()
+                self.docks.values.forEach { $0.finishSystemDockTransition() }
+            }
+        }
     }
 
     // MARK: - Window layout interception
@@ -1184,6 +1224,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 display.map { $0.withActive(($0.windowID ?? $0.windowIDs.first) == active) }
             } ?? display
             dock.update(apps: marked, animateChanges: !spaceChanged)
+            if !dock.hasPresented { dock.show() }
             if marked != lastDisplayByDisplay[uuid] { anyChanged = true }
             lastDisplayByDisplay[uuid] = marked
         }

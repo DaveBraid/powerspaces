@@ -140,6 +140,8 @@ final class DockPanel: NSPanel {
     /// freezes the poll's rebuilds so the animating icons aren't torn out from
     /// under the animation. (Internal for the auto-hide extension's `hide()`.)
     var isAnimating = false
+    /// 首次内容构建完成后才显示面板，避免空容器从默认位置闪到屏幕边缘。
+    private(set) var hasPresented = false
     /// The freshest app list requested while an animation was running, applied
     /// once it finishes so changes that arrived mid-animation aren't lost.
     private var pendingApps: [DockApp]?
@@ -265,9 +267,17 @@ final class DockPanel: NSPanel {
     }
 
     func show() {
-        orderFrontRegardless()
+        guard !hasPresented else { return }
+        hasPresented = true
         reposition()
         applyAutoHide() // install the pointer monitor + start the countdown if enabled
+        guard !fullyHidden, hideState == .shown, !SystemDisplay.reduceMotion else { return }
+        alphaValue = 0
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            animator().alphaValue = 1
+        }
     }
 
     /// Re-apply preference-driven appearance to the live panel (material, corner
@@ -634,6 +644,7 @@ final class DockPanel: NSPanel {
         // tears down the one under the cursor mid-hover, restarting its magnify
         // animation. Only rebuild when the contents actually changed.
         guard apps != self.apps || abs(fittingScale(for: apps) - adaptiveScale) > 0.0001 else { return }
+        if updateVisualStateInPlace(apps, animated: animateChanges) { return }
         WindowHoverPreview.shared.close(for: self)
         resetMagnification()
         let prefs = Preferences.shared
@@ -643,7 +654,7 @@ final class DockPanel: NSPanel {
         suppressAddAnimationOnce = false
         // Animate only genuine arrivals/departures, never the initial populate or
         // a Space switch (the whole list changing at once).
-        let canAnimate = abs(fittingScale(for: apps) - adaptiveScale) < 0.0001 && animateChanges && !self.apps.isEmpty && prefs.iconAnimationSpeed > 0.001
+        let canAnimate = animateChanges && hasPresented && prefs.iconAnimationSpeed > 0.001
             && !SystemDisplay.reduceMotion // skip join/leave animation under Reduce Motion
         // Leaving wins when both happen at once: play the departures out, then the
         // follow-up rebuild brings any arrivals in (without animating them).
@@ -664,6 +675,49 @@ final class DockPanel: NSPanel {
             }
         }
         rebuild(apps: apps)
+    }
+
+    /// 布局和身份未变时沿用原按钮，让运行状态、明暗与计数各自平滑过渡。
+    private func updateVisualStateInPlace(_ incoming: [DockApp], animated: Bool) -> Bool {
+        guard abs(fittingScale(for: incoming) - adaptiveScale) < 0.0001,
+              slotKeys(of: incoming) == slotKeys(of: apps),
+              incoming.count == apps.count else { return false }
+        let prefs = Preferences.shared
+        let stableLayout = zip(apps, incoming).allSatisfy { old, new in
+            old.bundleID == new.bundleID && old.name == new.name
+                && old.isPinnedHere == new.isPinnedHere
+                && old.isPinnedEverywhere == new.isPinnedEverywhere
+                && old.isExcludedHere == new.isExcludedHere
+                && old.isLauncher == new.isLauncher
+                && old.isFullscreenItem == new.isFullscreenItem
+                && (!prefs.showWindowLabels || (old.title == new.title
+                    && old.isActive == new.isActive && old.windowCount == new.windowCount))
+        }
+        let buttons = dockArrangedSubviews.compactMap { $0 as? DockButton }
+        guard stableLayout, buttons.count == incoming.count else { return false }
+        self.apps = incoming
+        for (button, app) in zip(buttons, incoming) {
+            let old = button.app
+            button.app = app
+            button.toolTip = tooltip(for: app)
+            if old?.pid != app.pid { button.image = icon(for: app) }
+            button.setIconOpacity(!app.isLauncher && !app.hasOpenWindows ? CGFloat(prefs.dimLevel) : 1,
+                                  animated: animated)
+            button.transitionIndicator(to: indicator(for: app), animated: animated)
+            if prefs.runningIndicator == .boxed {
+                button.setRunningBox(active: app.isRunning, gap: CGFloat(prefs.boxGap),
+                                     outlineWidth: CGFloat(prefs.boxOutlineWidth),
+                                     outlineColor: prefs.boxOutlineColor,
+                                     highlightColor: prefs.boxHighlightColor)
+            }
+            if old?.windowCount != app.windowCount {
+                let perWindow = prefs.windowDisplayMode == .split
+                    && (prefs.showIconPerWindow || prefs.showWindowLabels)
+                button.setWindowBadge(count: perWindow || prefs.windowDisplayMode == .merged
+                    ? 0 : app.windowCount)
+            }
+        }
+        return true
     }
 
     private var adaptiveScale: CGFloat = 1
@@ -840,6 +894,7 @@ final class DockPanel: NSPanel {
             button.widthConstraint = wc
             button.heightConstraint = hc
             stack.addArrangedSubview(button)
+            button.onIndicatorChanged = { [weak self] in self?.propagateUnifiedTextColor() }
             if entering.contains(slotKey) {
                 entered.append(button)
             } else if let from = oldWidths[slotKey], abs(from - width) > 0.5 {
@@ -2165,6 +2220,8 @@ final class DockPanel: NSPanel {
     /// extension can compute the on-edge spot the bar slides away from.
     func origin(forSize size: NSSize, on screen: NSScreen) -> NSPoint {
         let visible = screen.visibleFrame
+        // 系统 Dock 重启时 visibleFrame 会短暂在旧/新预留间摆动；隐藏后固定按物理屏幕边定位。
+        let outer = Preferences.shared.hideAppleDock ? screen.frame : visible
         let gap = CGFloat(Preferences.shared.edgeGap)
         // The bar hugs the window's OUTER edge (`applyBarFrame`) with all hover
         // headroom on the inner side, so we anchor the window's outer edge at the
@@ -2175,13 +2232,13 @@ final class DockPanel: NSPanel {
         // onto the neighbouring screen.
         switch Preferences.shared.barPosition {
         case .bottom:
-            return NSPoint(x: visible.midX - size.width / 2, y: visible.minY + gap)
+            return NSPoint(x: outer.midX - size.width / 2, y: outer.minY + gap)
         case .top:
             return NSPoint(x: visible.midX - size.width / 2, y: visible.maxY - size.height - gap)
         case .left:
-            return NSPoint(x: visible.minX + gap, y: visible.midY - size.height / 2)
+            return NSPoint(x: outer.minX + gap, y: outer.midY - size.height / 2)
         case .right:
-            return NSPoint(x: visible.maxX - size.width - gap, y: visible.midY - size.height / 2)
+            return NSPoint(x: outer.maxX - size.width - gap, y: outer.midY - size.height / 2)
         }
     }
 

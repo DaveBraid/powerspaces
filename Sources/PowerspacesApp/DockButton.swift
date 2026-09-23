@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import AppKit
+import QuartzCore
 import SpaceKit
 
 /// A dock icon button: reports right-clicks, shows a hover effect, and turns a
@@ -43,6 +44,7 @@ final class DockItemCell: NSButtonCell {
 final class DockButton: NSButton {
     var onPointerLeft: (() -> Void)?
     var onPointerMoved: ((NSPoint) -> Void)? // 即时屏幕坐标，不重用布局前的事件坐标。
+    var onIndicatorChanged: (() -> Void)?
     var usesSharedMagnification = false
     var restingWidth: CGFloat = 0
     var layoutScale: CGFloat = 1 // 拥挤时圆点间距随静止布局缩小，独立于悬停倍率。
@@ -63,6 +65,13 @@ final class DockButton: NSButton {
     /// 额外的窗口计数圆点（合并模式）。第一个圆点复用 `runningDot`，
     /// 因此拆分模式与「仅运行」的单点行为完全不变。
     private var extraDots: [AdaptiveDockMark] = []
+    private var displayedIndicator: Indicator = .none
+    private var requestedIndicator: Indicator?
+    private var indicatorTransition = 0
+    private var opacityLink: CADisplayLink?
+    private var opacityFrom: CGFloat = 1
+    private var opacityTo: CGFloat = 1
+    private var opacityStarted: CFTimeInterval = 0
 
     /// 图标下方的运行/窗口指示。
     enum Indicator: Equatable {
@@ -84,6 +93,8 @@ final class DockButton: NSButton {
     /// 设置指示标记。合并模式的圆点数量严格等于当前桌面的窗口数；
     /// 无窗口但仍在运行时用空心圆表示「没有完全退出」。
     func setIndicator(_ indicator: Indicator) {
+        displayedIndicator = indicator
+        requestedIndicator = nil
         let wanted: (count: Int, hollow: Bool, capsule: Bool)
         switch indicator {
         case .none: wanted = (0, false, false)
@@ -134,6 +145,83 @@ final class DockButton: NSButton {
         }
         for dot in extraDots { dot.isHollow = false }
         needsLayout = true
+        onIndicatorChanged?()
+    }
+
+    /// 原位更新运行标记：淡出旧形状再淡入新形状，避免圆点与空心胶囊瞬间互换。
+    func transitionIndicator(to indicator: Indicator, animated: Bool) {
+        guard indicator != (requestedIndicator ?? displayedIndicator) else { return }
+        indicatorTransition &+= 1
+        let generation = indicatorTransition
+        let oldMarks = ([runningDot].compactMap { $0 }) + extraDots
+        requestedIndicator = indicator
+        guard animated, !SystemDisplay.reduceMotion else { setIndicator(indicator); return }
+        if indicator == displayedIndicator {
+            requestedIndicator = nil
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.13
+                oldMarks.forEach { $0.animator().alphaValue = 1 }
+            }
+            return
+        }
+        guard !oldMarks.isEmpty else {
+            setIndicator(indicator)
+            let newMarks = ([runningDot].compactMap { $0 }) + extraDots
+            newMarks.forEach { $0.alphaValue = 0 }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                newMarks.forEach { $0.animator().alphaValue = 1 }
+            }
+            return
+        }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.09
+            oldMarks.forEach { $0.animator().alphaValue = 0 }
+        }, completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.indicatorTransition == generation else { return }
+                self.setIndicator(indicator)
+                let newMarks = ([self.runningDot].compactMap { $0 }) + self.extraDots
+                newMarks.forEach { $0.alphaValue = 0 }
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.13
+                    newMarks.forEach { $0.animator().alphaValue = 1 }
+                }
+            }
+        })
+    }
+
+    /// 只重绘图标透明度，徽章和运行标记不跟着变暗；刷新节拍仅在过渡期间运行。
+    func setIconOpacity(_ target: CGFloat, animated: Bool) {
+        guard let cell = cell as? DockItemCell else { return }
+        guard animated, !SystemDisplay.reduceMotion, abs(cell.iconOpacity - target) > 0.001 else {
+            opacityLink?.invalidate()
+            opacityLink = nil
+            cell.iconOpacity = target
+            needsDisplay = true
+            return
+        }
+        opacityFrom = cell.iconOpacity
+        opacityTo = target
+        opacityStarted = CACurrentMediaTime()
+        if opacityLink == nil {
+            let link = displayLink(target: self, selector: #selector(tickIconOpacity(_:)))
+            link.add(to: .main, forMode: .common)
+            opacityLink = link
+        }
+    }
+
+    @objc private func tickIconOpacity(_ link: CADisplayLink) {
+        let progress = min(1, (CACurrentMediaTime() - opacityStarted) / 0.22)
+        let eased = progress * progress * (3 - 2 * progress)
+        (cell as? DockItemCell)?.iconOpacity = opacityFrom + (opacityTo - opacityFrom) * eased
+        needsDisplay = true
+        if progress >= 1 { link.invalidate(); opacityLink = nil }
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        if superview == nil { opacityLink?.invalidate(); opacityLink = nil }
     }
 
     /// 兼容原有单点调用：`true` 等价于 `.running`。
@@ -446,6 +534,7 @@ final class DockButton: NSButton {
     /// it composes with (and magnifies under) the hover transform without fighting
     /// the hover highlight, which lives on the button's own layer.
     private var boxLayer: CALayer?
+    private var badgeRemovalGeneration = 0
     private var boxActive = false
     private var boxGap: CGFloat = 0
     private var boxOutlineWidth: CGFloat = 2
@@ -459,6 +548,7 @@ final class DockButton: NSButton {
     /// the inside is tinted with `highlightColor`.
     func setRunningBox(active: Bool, gap: CGFloat, outlineWidth: CGFloat,
                        outlineColor: NSColor, highlightColor: NSColor) {
+        let wasActive = boxActive
         boxActive = active
         boxGap = gap
         boxOutlineWidth = outlineWidth
@@ -467,6 +557,19 @@ final class DockButton: NSButton {
         wantsLayer = true
         layer?.masksToBounds = false // the box can sit slightly outside our bounds
         updateBoxLayer()
+        if wasActive != active, let boxLayer {
+            let from = boxLayer.presentation()?.opacity ?? (wasActive ? 1 : 0)
+            let to: Float = active ? 1 : 0
+            boxLayer.opacity = to
+            if !SystemDisplay.reduceMotion {
+                let fade = CABasicAnimation(keyPath: "opacity")
+                fade.fromValue = from
+                fade.toValue = to
+                fade.duration = 0.2
+                fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                boxLayer.add(fade, forKey: "runningState")
+            }
+        }
     }
 
     private var adaptiveTitle: AdaptiveDockLabel?
@@ -569,26 +672,47 @@ final class DockButton: NSButton {
     /// 空值移除，其他文本原样保留；只更新覆盖层，不重建按钮或中断交互。
     func setNotificationBadge(_ text: String?) {
         guard let text, !text.isEmpty else {
-            notificationBadge?.removeFromSuperview()
-            notificationBadge = nil
+            guard let badge = notificationBadge else { return }
+            badgeRemovalGeneration &+= 1
+            let generation = badgeRemovalGeneration
+            guard !SystemDisplay.reduceMotion else {
+                badge.removeFromSuperview()
+                notificationBadge = nil
+                return
+            }
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.16
+                badge.animator().alphaValue = 0
+            }, completionHandler: { [weak self, weak badge] in
+                MainActor.assumeIsolated {
+                    guard let self, let badge, self.notificationBadge === badge,
+                          self.badgeRemovalGeneration == generation else { return }
+                    badge.removeFromSuperview()
+                    self.notificationBadge = nil
+                }
+            })
             return
         }
+        badgeRemovalGeneration &+= 1
         if notificationBadge == nil {
             let badge = DockBadgeView()
             badge.setAccessibilityElement(false)
+            badge.alphaValue = SystemDisplay.reduceMotion ? 1 : 0
             addSubview(badge)
             notificationBadge = badge
         }
         notificationBadge?.text = text
+        if let badge = notificationBadge, badge.alphaValue < 1 {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                badge.animator().alphaValue = 1
+            }
+        }
         needsLayout = true
     }
 
     private func updateBoxLayer() {
-        guard boxActive else {
-            boxLayer?.removeFromSuperlayer()
-            boxLayer = nil
-            return
-        }
+        guard boxActive || boxLayer != nil else { return }
         let box = boxLayer ?? {
             let l = CALayer()
             layer?.insertSublayer(l, at: 0)

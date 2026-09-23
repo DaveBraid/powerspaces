@@ -16,6 +16,19 @@ extension DockPanel {
     /// 预览延迟关闭后恢复自动隐藏倒计时，不依赖下一次鼠标移动。
     func previewDidClose() { if autoHideActive { scheduleHideIfIdle() } }
 
+    /// 系统 Dock 完成重启和几何更新后，再将 PS 的可见面板淡入最终停靠位置。
+    func finishSystemDockTransition() {
+        guard isVisible, !fullyHidden else { return }
+        let target = placedAlpha()
+        guard !SystemDisplay.reduceMotion, target > 0 else { alphaValue = target; return }
+        alphaValue = 0
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            animator().alphaValue = target
+        }
+    }
+
     /// (Re)configure auto-hide from preferences. Installs or tears down the pointer
     /// monitor and either starts the hide countdown or fully reveals the bar.
     /// Called on launch (`show`) and on every preferences change (`applyAppearance`).
@@ -32,7 +45,10 @@ extension DockPanel {
         }
         // Coming back from a fully-hidden state: put the bar back on screen before
         // (re)configuring.
-        if !isVisible { orderFrontRegardless() }
+        if !isVisible {
+            guard hasPresented else { return }
+            orderFrontRegardless()
+        }
         // 缩放也需要跨应用的离开事件，不能只依赖 tracking area 的退出回调。
         if autoHideActive || Preferences.shared.hoverEnabled || Preferences.shared.windowPreviewEnabled { installMouseMonitor() }
         else { removeMouseMonitor() }
