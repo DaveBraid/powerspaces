@@ -228,7 +228,8 @@ extension Launcher {
     /// 失败（接口缺失或系统未接受）时降级为警告，不静默把用户带走。
     func moveProcessHere(target: AppTarget, snapshot: SpaceSnapshot) -> LaunchOutcome {
         let currentSpace = snapshot.activeSpaceID
-        let elsewhere = snapshot.windows(of: target).contains { window in
+        let windows = snapshot.windows(of: target)
+        let elsewhere = windows.contains { window in
             !window.spaceIDs.isEmpty && !window.spaceIDs.contains(currentSpace)
         }
         guard elsewhere else {
@@ -236,19 +237,22 @@ extension Launcher {
             activate(target)
             return .newWindow(.moveHere)
         }
-        guard let pid = snapshot.windows(of: target).first?.pid,
+        guard let window = windows.first(where: { !$0.isMinimized && !$0.spaceIDs.isEmpty }) ?? windows.first,
               let provider = provider as? CGSSpaceProvider else {
             return warned(target, "could not be moved to this desktop.")
         }
         do {
-            try WindowSpaceMover.assignAndRemember(pid: pid, to: currentSpace,
+            try WindowSpaceMover.assignAndRemember(pid: window.pid, to: currentSpace,
                                        confirmedSpaces: provider.spaces(forPID:))
         } catch WindowSpaceMover.MoveError.assignmentNotSaved {
+            activate(target)
+            _ = focusMovedWindow(windowID: window.windowID, pid: window.pid)
             return warned(target, "was moved, but its desktop assignment could not be saved.")
         } catch {
             return warned(target, "could not be moved to this desktop.")
         }
         activate(target)
+        _ = focusMovedWindow(windowID: window.windowID, pid: window.pid)
         return .newWindow(.moveHere)
     }
 }

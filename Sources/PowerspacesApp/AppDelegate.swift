@@ -30,6 +30,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // 直接比较 Space ID：与上次判定时的 Space 不同，说明这次前台变化伴随切桌面。
             guard let self, let current = try? self.provider.snapshot().activeSpaceID else { return true }
             return current != self.lastCheckedSpaceID
+        },
+        focusMovedWindow: { [weak self] windowID, pid in
+            // 激活事件过时或用户已切到别的应用时，不抢回焦点。
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
+            _ = self?.launcher.focusMovedWindow(windowID: windowID, pid: pid)
         })
 
     /// 在已有轮询里检测前台变化：必要时把该应用的窗口搬到当前桌面。

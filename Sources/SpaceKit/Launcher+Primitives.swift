@@ -14,6 +14,12 @@ import Foundation
 extension Launcher {
     // MARK: - Focus an exact window on the current Space
 
+    /// 搬移确认后置顶指定窗口；只操作已搬来的窗口，避免再次激活进程导致切桌面。
+    @discardableResult
+    public func focusMovedWindow(windowID: CGWindowID, pid: pid_t) -> Bool {
+        raise(windowID: windowID, pid: pid, activateApp: false, requireExactWindow: true)
+    }
+
     /// Bring an exact window forward. `activateApp` (default true) also makes the
     /// owning process frontmost. Pass `false` to raise the window *without* process
     /// activation: a freshly-spawned *second* instance of a single-window Electron app

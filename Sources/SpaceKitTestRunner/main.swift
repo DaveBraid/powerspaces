@@ -1804,12 +1804,14 @@ h.test("an app that only lives on another desktop is moved when activated") {
              rect: CGRect(x: 10, y: 10, width: 400, height: 300), onscreen: false, spaces: [2]),
     ])
     var moved: [(pid_t, SpaceID)] = []
+    var focused: [(CGWindowID, pid_t)] = []
     let mover = ActivatedAppMover(
         isEnabled: { true },
         spaceRecentlyChanged: { false },
         available: { true },
         move: { pid, space, _ in moved.append((pid, space)); return space },
         currentSpace: { 1 },            // 桌面未被应用带走
+        focusMovedWindow: { focused.append(($0, $1)) },
         settleDelay: 0)
     let outcome = mover.consider(
         .init(activeSpaceID: 1, target: AppTarget(bundleID: "demo.one", name: "Demo"),
@@ -1818,6 +1820,8 @@ h.test("an app that only lives on another desktop is moved when activated") {
     h.eq(outcome, .moved, "moves an app that is only elsewhere")
     h.eq(moved.count, 1, "calls the move exactly once")
     h.eq(moved.first?.1, 1, "moves it to the current desktop")
+    h.eq(focused.first?.0, 11, "focuses the moved window")
+    h.eq(focused.count, 1, "focuses it exactly once")
 }
 
 h.test("an app already on this desktop is left alone") {
@@ -1828,14 +1832,35 @@ h.test("an app already on this desktop is left alone") {
              rect: CGRect(x: 20, y: 20, width: 400, height: 300), onscreen: false, spaces: [2]),
     ])
     var called = false
+    var focused = false
     let mover = ActivatedAppMover(
         isEnabled: { true }, spaceRecentlyChanged: { false }, available: { true },
-        move: { _, space, _ in called = true; return space })
+        move: { _, space, _ in called = true; return space },
+        focusMovedWindow: { _, _ in focused = true })
     h.eq(mover.consider(
         .init(activeSpaceID: 1, target: AppTarget(bundleID: "demo.one", name: "Demo"),
               pid: 111, confirmSpaces: { _ in [] }),
         snapshot: snapshot), .alreadyHere, "a window here means nothing to move")
     h.ok(!called, "does not touch the mover at all")
+    h.ok(!focused, "does not disturb an already-local window")
+}
+
+h.test("a moved window is focused even when saving its desktop assignment fails") {
+    let snapshot = SpaceSnapshot(activeSpaceID: 1, windows: [
+        dwin(11, 111, name: "Demo", bundle: "demo.one",
+             rect: CGRect(x: 10, y: 10, width: 400, height: 300), onscreen: false, spaces: [2]),
+    ])
+    var focused: [CGWindowID] = []
+    let mover = ActivatedAppMover(
+        isEnabled: { true }, spaceRecentlyChanged: { false }, available: { true },
+        move: { _, _, _ in throw WindowSpaceMover.MoveError.assignmentNotSaved },
+        currentSpace: { 1 },
+        focusMovedWindow: { windowID, _ in focused.append(windowID) })
+    h.eq(mover.consider(
+        .init(activeSpaceID: 1, target: AppTarget(bundleID: "demo.one", name: "Demo"),
+              pid: 111, confirmSpaces: { _ in [] }),
+        snapshot: snapshot), .assignmentNotSaved, "reports the save failure")
+    h.eq(focused, [11], "the physically moved window is still brought forward")
 }
 
 h.test("a desktop switch is never mistaken for an activation") {
@@ -1886,11 +1911,13 @@ h.test("the fallback brings the desktop back when an app hijacks it") {
     ])
     var display: SpaceID = 2          // 应用把桌面抢到了 2
     var switchedBack: [SpaceID] = []
+    var focused: [CGWindowID] = []
     let mover = ActivatedAppMover(
         isEnabled: { true }, spaceRecentlyChanged: { false }, available: { true },
         move: { _, space, _ in space },
         currentSpace: { display },
         switchBack: { switchedBack.append($0); display = $0; return true },
+        focusMovedWindow: { windowID, _ in focused.append(windowID) },
         settleDelay: 0,
         schedule: { _, work in work() })
     h.eq(mover.consider(
@@ -1898,6 +1925,7 @@ h.test("the fallback brings the desktop back when an app hijacks it") {
               pid: 111, confirmSpaces: { _ in [] }),
         snapshot: snapshot), .movedAndSwitchedBack, "reports that it switched the desktop back")
     h.eq(switchedBack, [1], "switches back to the desktop the user was on")
+    h.eq(focused, [11], "focuses only after returning to the target desktop")
 }
 
 h.test("no switch-back when the desktop was not hijacked") {
@@ -1925,17 +1953,20 @@ h.test("a failed move still performs no desktop switch") {
              rect: CGRect(x: 10, y: 10, width: 400, height: 300), onscreen: false, spaces: [2]),
     ])
     var switchedBack = false
+    var focused = false
     let mover = ActivatedAppMover(
         isEnabled: { true }, spaceRecentlyChanged: { false }, available: { true },
         move: { _, _, _ in throw WindowSpaceMover.MoveError.notMoved },
         currentSpace: { 2 },
         switchBack: { _ in switchedBack = true; return true },
+        focusMovedWindow: { _, _ in focused = true },
         settleDelay: 0)
     h.eq(mover.consider(
         .init(activeSpaceID: 1, target: AppTarget(bundleID: "demo.one", name: "Demo"),
               pid: 111, confirmSpaces: { _ in [] }),
         snapshot: snapshot), .notMoved, "a refused move stays notMoved")
     h.ok(!switchedBack, "搬不动时连桌面也不碰")
+    h.ok(!focused, "搬移失败时不抢焦点")
 }
 
 h.test("a failed move is reported and never retried") {

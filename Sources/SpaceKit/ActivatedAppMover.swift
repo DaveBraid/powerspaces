@@ -94,6 +94,8 @@ public final class ActivatedAppMover: @unchecked Sendable {
     private let currentSpace: () -> SpaceID?
     /// 切回指定桌面（兜底）；返回是否发起。
     private let switchBack: (SpaceID) -> Bool
+    /// 搬移完成后置顶具体窗口；由应用层复用 Launcher 的 AX 聚焦实现。
+    private let focusMovedWindow: (CGWindowID, pid_t) -> Void
     /// 兜底前等待的秒数：`moveToActiveSpace` 类应用在激活后极短时间内才抢桌面。
     private let settleDelay: TimeInterval
     /// 延迟调度器；测试注入立即执行版本，避免依赖真实计时。
@@ -105,6 +107,7 @@ public final class ActivatedAppMover: @unchecked Sendable {
                 move: ((pid_t, SpaceID, @escaping (pid_t) -> Set<SpaceID>) throws -> SpaceID)? = nil,
                 currentSpace: @escaping () -> SpaceID? = { WindowSpaceMover.currentSpace() },
                 switchBack: @escaping (SpaceID) -> Bool = { WindowSpaceMover.switchBack(to: $0) },
+                focusMovedWindow: @escaping (CGWindowID, pid_t) -> Void = { _, _ in },
                 settleDelay: TimeInterval = 0.4,
                 schedule: ((TimeInterval, @escaping () -> Void) -> Void)? = nil) {
         self.isEnabled = isEnabled
@@ -115,6 +118,7 @@ public final class ActivatedAppMover: @unchecked Sendable {
         }
         self.currentSpace = currentSpace
         self.switchBack = switchBack
+        self.focusMovedWindow = focusMovedWindow
         self.settleDelay = settleDelay
         self.schedule = schedule ?? { delay, work in
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
@@ -140,10 +144,15 @@ public final class ActivatedAppMover: @unchecked Sendable {
         guard windows.contains(where: { !$0.spaceIDs.isEmpty }), let pid = input.pid else {
             return .notMoved
         }
+        let movedWindow = windows.first(where: { $0.pid == pid && !$0.isMinimized && !$0.spaceIDs.isEmpty })
+            ?? windows.first(where: { $0.pid == pid && !$0.spaceIDs.isEmpty })
         do {
             // 搬移实现自带「重新读取归属确认」，失败会抛错。
             _ = try move(pid, input.activeSpaceID, input.confirmSpaces)
         } catch WindowSpaceMover.MoveError.assignmentNotSaved {
+            if currentSpace() == input.activeSpaceID, let movedWindow {
+                focusMovedWindow(movedWindow.windowID, pid)
+            }
             return .assignmentNotSaved
         } catch {
             // 搬不动就什么都不做：不跳桌面、不关窗口、不反复重试。
@@ -153,9 +162,14 @@ public final class ActivatedAppMover: @unchecked Sendable {
         // 拉走，外部无法改写该行为。这里**异步**等一小段再检查并切回，绝不阻塞调用方
         // （激活回调在主线程上）。只有确实被带走才切回，代价是一次可见的桌面闪动。
         let alreadyHijacked = currentSpace() != input.activeSpaceID
+        if !alreadyHijacked, let movedWindow {
+            focusMovedWindow(movedWindow.windowID, pid)
+        }
         schedule(settleDelay) { [weak self] in
             guard let self, self.isEnabled(), self.currentSpace() != input.activeSpaceID else { return }
-            _ = self.switchBack(input.activeSpaceID)
+            if self.switchBack(input.activeSpaceID), let movedWindow {
+                self.focusMovedWindow(movedWindow.windowID, pid)
+            }
         }
         return alreadyHijacked ? .movedAndSwitchedBack : .moved
     }
