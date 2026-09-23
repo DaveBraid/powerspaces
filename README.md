@@ -1,5 +1,7 @@
 <p align="center">
 
+The Strategies page now offers one behavior picker for the seven known single-window apps. If an older config contains different choices, it shows “Existing individual choices” until you pick a common behavior; other apps’ rules remain intact.
+
 The Effects page provides adjacent Overall dock size (50–200%) and Magnification sliders. Overall size defaults to 100% and preserves your individual icon, spacing and thickness settings; screen fitting still applies.
 
 PS automatically reduces the effective icon size, spacing and glass thickness when a dock would exceed its screen’s available space, restoring the configured sizes as items disappear. Your size preferences remain unchanged. Hover expansion is budgeted separately to avoid resizing feedback during pointer movement.

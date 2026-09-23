@@ -1018,31 +1018,22 @@ struct PreferencesView: View {
                     + "rule from an icon's right-click menu → “When open elsewhere”. Saved to "
                     + "~/.config/powerspaces/config.json."))
             }
-            if advanced {
-                Section {
-                    ForEach(SingleInstance.apps) { app in
-                        Picker(L10n.string(app.name), selection: Binding(
-                            get: { strategies.effectiveStrategy(for: app.bundleID) },
-                            set: { _ = strategies.setStrategy($0, forBundleID: app.bundleID, name: app.name) }
-                        )) {
-                            Text(L10n.string("Show a warning")).tag(StrategyKind.warn)
-                            Text(StrategyKind.moveHere.pickerLabel).tag(StrategyKind.moveHere)
-                            Text(L10n.string("Quit there and reopen here")).tag(StrategyKind.quitReopen)
-                        }
-                        .help(L10n.format("What to do when %@ is already open on another desktop.", L10n.string(app.name)))
+            Section {
+                Picker(L10n.string("Behavior for single-window apps"), selection: Binding<StrategyKind?>(
+                    get: { strategies.effectiveSingleInstanceStrategy() },
+                    set: { if let kind = $0 { strategies.setSingleInstanceStrategy(kind) } }
+                )) {
+                    if strategies.effectiveSingleInstanceStrategy() == nil {
+                        Text(L10n.string("Existing individual choices")).tag(nil as StrategyKind?)
                     }
-                } header: {
-                    Text(L10n.string("Single-window apps open on another desktop"))
-                } footer: {
-                    Text(L10n.string(
-                        "These apps can't be given a second window on the desktop you're on because "
-                        + "macOS doesn't allow it. Default is to show a warning. “Move it to this "
-                        + "desktop” brings the app's existing windows over to the desktop you're on "
-                        + "(its windows follow, nothing is quit). It's marked experimental because it "
-                        + "uses an undocumented system interface, so it may stop working on a future "
-                        + "macOS version. “Quit there and reopen here” quits the app and relaunches it "
-                        + "here, which works but loses anything unsaved or playing."))
+                    Text(L10n.string("Show a warning")).tag(StrategyKind.warn as StrategyKind?)
+                    Text(StrategyKind.moveHere.pickerLabel).tag(StrategyKind.moveHere as StrategyKind?)
+                    Text(L10n.string("Quit there and reopen here")).tag(StrategyKind.quitReopen as StrategyKind?)
                 }
+            } header: {
+                Text(L10n.string("Single-window apps open on another desktop"))
+            } footer: {
+                Text(L10n.string("Applies to Messages, System Settings, Music, Reminders, Calendar, Contacts and Mail. Existing individual choices stay in effect until you select one behavior for all. Moving uses an experimental system interface; quitting and reopening may lose unsaved work or playback."))
             }
         }
         .formStyle(.grouped)

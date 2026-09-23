@@ -691,3 +691,15 @@
 "Large" = "Large";
 
 "Dock size and magnification" = "Dock size and magnification";
+
+"Behavior for single-window apps" = "Behavior for single-window apps";
+
+"Existing individual choices" = "Existing individual choices";
+
+"Applies to Messages, System Settings, Music, Reminders, Calendar, Contacts and Mail. Existing individual choices stay in effect until you select one behavior for all. Moving uses an experimental system interface; quitting and reopening may lose unsaved work or playback." = "Applies to Messages, System Settings, Music, Reminders, Calendar, Contacts and Mail. Existing individual choices stay in effect until you select one behavior for all. Moving uses an experimental system interface; quitting and reopening may lose unsaved work or playback.";
+
+"Quit and reopen single-window apps when opened elsewhere?" = "Quit and reopen single-window apps when opened elsewhere?";
+
+"When you click one of these apps while its window is on another desktop, Powerspaces will quit and reopen it here. Unsaved work or playback in that app may be lost. This selection does not quit any app now." = "When you click one of these apps while its window is on another desktop, Powerspaces will quit and reopen it here. Unsaved work or playback in that app may be lost. This selection does not quit any app now.";
+
+"Use this behavior" = "Use this behavior";

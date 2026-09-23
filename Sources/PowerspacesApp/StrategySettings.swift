@@ -90,6 +90,19 @@ final class StrategyStore {
             ?? StrategyConfig.defaults.strategy(for: bundleID)
     }
 
+    /// 旧的逐应用设置不一致时返回 nil，让统一下拉明确显示“已有单独设置”。
+    func effectiveSingleInstanceStrategy() -> StrategyKind? {
+        let choices = SingleInstance.apps.map { effectiveStrategy(for: $0.bundleID) }
+        guard let first = choices.first, choices.allSatisfy({ $0 == first }) else { return nil }
+        return first
+    }
+
+    /// 一次写入全部已知单实例应用，保留其他应用规则和每项附加参数。
+    func setSingleInstanceStrategy(_ kind: StrategyKind) {
+        for app in SingleInstance.apps { setStrategy(kind, for: app.bundleID, saveNow: false) }
+        save()
+    }
+
     func setDefault(_ kind: StrategyKind) {
         file.defaultStrategy = kind
         save()
@@ -97,7 +110,7 @@ final class StrategyStore {
 
     /// Upserts one app's strategy, preserving its `appleScript`/`args` so we never
     /// drop a scripted/arg'd entry when only flipping the strategy.
-    func setStrategy(_ kind: StrategyKind, for bundleID: String) {
+    func setStrategy(_ kind: StrategyKind, for bundleID: String, saveNow: Bool = true) {
         let existing = file.apps?.first { $0.bundleID == bundleID }
         let appleScript = existing?.appleScript ?? StrategyConfig.defaults.appleScript(for: bundleID)
         let defaultArgs = StrategyConfig.defaults.args(for: bundleID)
@@ -107,7 +120,7 @@ final class StrategyStore {
         if let i = apps.firstIndex(where: { $0.bundleID == bundleID }) { apps[i] = entry }
         else { apps.append(entry) }
         file.apps = apps
-        save()
+        if saveNow { save() }
     }
 
     private func save() { JSONFileStore.writeEncodable(file, to: url) }
@@ -132,6 +145,14 @@ final class StrategySettingsController: ObservableObject {
 
     func effectiveDefault() -> StrategyKind { store.effectiveDefault() }
     func effectiveStrategy(for bundleID: String) -> StrategyKind { store.effectiveStrategy(for: bundleID) }
+    func effectiveSingleInstanceStrategy() -> StrategyKind? { store.effectiveSingleInstanceStrategy() }
+
+    /// 为预置单实例应用统一选择行为；退出重开只确认一次。
+    @MainActor func setSingleInstanceStrategy(_ kind: StrategyKind) {
+        if kind == .quitReopen, !confirmSingleInstanceQuitReopen() { return }
+        store.setSingleInstanceStrategy(kind)
+        publish()
+    }
 
     func setDefault(_ kind: StrategyKind) {
         store.setDefault(kind)
@@ -152,6 +173,18 @@ final class StrategySettingsController: ObservableObject {
     private func publish() {
         objectWillChange.send()
         onChanged?()
+    }
+
+    /// 批量选择危险策略前告知影响；这里只保存规则，不立即退出任何应用。
+    @MainActor private func confirmSingleInstanceQuitReopen() -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.string("Quit and reopen single-window apps when opened elsewhere?")
+        alert.informativeText = L10n.string("When you click one of these apps while its window is on another desktop, Powerspaces will quit and reopen it here. Unsaved work or playback in that app may be lost. This selection does not quit any app now.")
+        alert.addButton(withTitle: L10n.string("Use this behavior"))
+        alert.addButton(withTitle: L10n.string("Cancel"))
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     @MainActor private func confirmQuitReopen(name: String) -> Bool {

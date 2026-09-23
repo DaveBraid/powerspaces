@@ -743,6 +743,22 @@ enum DevelopmentTools {
         func check(_ condition: Bool, _ label: String) {
             if !condition { failures += 1; print("FAIL: \(label)") }
         }
+        let strategiesURL = directory.appendingPathComponent("config.json")
+        let strategyStore = StrategyStore(url: strategiesURL)
+        check(strategyStore.effectiveSingleInstanceStrategy() == .warn,
+              "single-window apps start with one warning choice")
+        strategyStore.setStrategy(.moveHere, for: "com.apple.Music")
+        check(strategyStore.effectiveSingleInstanceStrategy() == nil,
+              "mixed old per-app choices stay visible without migration")
+        strategyStore.setStrategy(.openArgs, for: "org.mozilla.firefox")
+        strategyStore.setSingleInstanceStrategy(.moveHere)
+        let reloadedStrategies = StrategyStore(url: strategiesURL)
+        check(reloadedStrategies.effectiveSingleInstanceStrategy() == .moveHere
+              && SingleInstance.apps.allSatisfy({ reloadedStrategies.effectiveStrategy(for: $0.bundleID) == .moveHere }),
+              "one choice persists for every single-window app")
+        let savedConfig = JSONFileStore.read(StrategyConfig.ConfigFile.self, from: strategiesURL)
+        check(savedConfig?.apps?.first(where: { $0.bundleID == "org.mozilla.firefox" })?.args == ["--new-window"],
+              "bulk choice keeps unrelated app arguments")
         let prefs = Preferences(url: url)
         check(prefs.dockOpacity == 1, "default opacity")
         check(prefs.dockScale == 1, "old preferences keep original dock size")
