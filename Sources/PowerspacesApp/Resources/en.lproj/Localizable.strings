@@ -16,6 +16,7 @@
 "%@ has unsaved changes — left it open so you can save first." = "%@ has unsaved changes — left it open so you can save first.";
 "%@ is already open on another desktop — switch desktops to use it." = "%@ is already open on another desktop — switch desktops to use it.";
 "%@ is open on another desktop and “Open a new window” didn’t work for it — switch desktops to use it." = "%@ is open on another desktop and “Open a new window” didn’t work for it — switch desktops to use it.";
+"%@ opened a window, but it could not be moved to this desktop." = "%@ opened a window, but it could not be moved to this desktop.";
 "%@ needs Accessibility (granted to the powerspaces app) to close its windows here." = "%@ needs Accessibility (granted to the powerspaces app) to close its windows here.";
 "%@ needs Accessibility (granted to the powerspaces app) to close its windows." = "%@ needs Accessibility (granted to the powerspaces app) to close its windows.";
 "%@-click" = "%@-click";

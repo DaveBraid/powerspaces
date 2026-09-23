@@ -16,6 +16,7 @@
 "%@ has unsaved changes — left it open so you can save first." = "%@ 有未保存的更改，已保留窗口，请先保存。";
 "%@ is already open on another desktop — switch desktops to use it." = "%@ 已在其他桌面打开，请切换到对应桌面使用。";
 "%@ is open on another desktop and “Open a new window” didn’t work for it — switch desktops to use it." = "%@ 已在其他桌面打开，且未能新建窗口。请切换到对应桌面使用。";
+"%@ opened a window, but it could not be moved to this desktop." = "%@ 已新建窗口，但无法将它移到当前桌面。";
 "%@ needs Accessibility (granted to the powerspaces app) to close its windows here." = "%@：需要授予 PowerSpaces 辅助功能权限，才能关闭当前桌面的窗口。";
 "%@ needs Accessibility (granted to the powerspaces app) to close its windows." = "%@：需要授予 PowerSpaces 辅助功能权限，才能关闭窗口。";
 "%@-click" = "%@ + 点击";

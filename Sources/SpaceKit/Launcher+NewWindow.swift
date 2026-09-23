@@ -45,11 +45,13 @@ extension Launcher {
             // windowless instance) keeps activation — there's no duplicate to hand off to.
             let appeared = placeNewWindowHere(target, existing: existing,
                                               preferredDisplay: preferredDisplay,
-                                              focus: true, activateApp: !hasRealWindow)
+                                              focus: true, activateApp: !hasRealWindow,
+                                              targetSpace: targetSpace)
             return appeared ? .newWindow(.newInstance) : newWindowDidNotAppear(target)
         case .openArgs:
             openWithArgs(target, args: config.args(for: target.bundleID))
-            let appeared = placeNewWindowHere(target, existing: existing, preferredDisplay: preferredDisplay)
+            let appeared = placeNewWindowHere(target, existing: existing,
+                                              preferredDisplay: preferredDisplay, targetSpace: targetSpace)
             return appeared ? .newWindow(.openArgs) : newWindowDidNotAppear(target)
         case .appleScript:
             // Finder is special. After a "quit (all desktops)" macOS auto-relaunches
@@ -75,7 +77,8 @@ extension Launcher {
                 appleScriptFallback(target)
             }
             activate(target)
-            let appeared = placeNewWindowHere(target, existing: existing, preferredDisplay: preferredDisplay)
+            let appeared = placeNewWindowHere(target, existing: existing,
+                                              preferredDisplay: preferredDisplay, targetSpace: targetSpace)
             return appeared ? .newWindow(.appleScript) : newWindowDidNotAppear(target)
         case .warn:
             return warned(target, "is already open on another desktop — switch desktops to use it.")
@@ -84,7 +87,8 @@ extension Launcher {
         case .cmdN:
             activate(target)
             postCmdN()
-            let appeared = placeNewWindowHere(target, existing: existing, preferredDisplay: preferredDisplay)
+            let appeared = placeNewWindowHere(target, existing: existing,
+                                              preferredDisplay: preferredDisplay, targetSpace: targetSpace)
             return appeared ? .newWindow(.cmdN) : newWindowDidNotAppear(target)
         case .focusOnly:
             // No new window by design — just activate and accept the jump to the
@@ -130,12 +134,8 @@ extension Launcher {
     /// single-window app like Claude — isn't induced to hand off and close. Either way
     /// the window is on the current Space, so raising it never switches desktops.
     ///
-    /// Only ever acts on a *real* window that landed on the current Space: a window
-    /// the app parked on another Space, or an off-screen placeholder "phantom"
-    /// (empty `spaceIDs`, so not `isOn` the active Space), is skipped — so we never
-    /// reposition or focus the wrong one. Best-effort: it needs a fresh window to
-    /// appear within ~2 s, and the display move additionally needs Accessibility
-    /// and a readable layout.
+    /// 只选本次新增的真实窗口；多屏时应用若先把它建在别的屏幕，先移动物理坐标，
+    /// 再确认它落在点击程序坞的 Space。占位窗口（空 `spaceIDs`）始终跳过。
     ///
     /// Returns whether the strategy produced a window at all. `false` means no fresh
     /// window appeared anywhere within the timeout — the signal that "Open a new
@@ -149,17 +149,16 @@ extension Launcher {
         let displays = trusted ? DisplayInfo.allDisplayBounds() : []
         let active = preferredDisplay ?? DisplayInfo.activeDisplayBounds()
         let needsMove = trusted && displays.count > 1 && active != nil
+        var attemptedSpaceMoves: Set<CGWindowID> = []
 
-        // The window may take a beat to exist; poll briefly for a fresh window of the
-        // target that landed on the current Space, then act on it once. We always
-        // poll now (even single-display, no-focus, where there's nothing to move or
-        // raise) so the return value can tell whether a window ever showed up.
-        let placedHere = pollUntil(timeout: 2.0, interval: 80_000) {
-            guard let snapshot = try? provider.snapshot(),
-                  let fresh = snapshot.windows(of: target).first(where: {
-                      !existing.contains($0.windowID) && $0.isOn(targetSpace ?? snapshot.activeSpaceID)
-                  })
-            else { return false }
+        // 新进程可能先在另一个显示器的 Space 创建窗口；只按目标 Space 筛选会漏掉它。
+        let placedHere = pollUntil(timeout: 3.0, interval: 80_000) {
+            guard let snapshot = try? provider.snapshot() else { return false }
+            let destination = targetSpace ?? snapshot.activeSpaceID
+            let freshWindows = snapshot.realWindows(of: target).filter { !existing.contains($0.windowID) }
+            guard let fresh = freshWindows.first(where: { $0.isOn(destination) }) ?? freshWindows.first else {
+                return false
+            }
             // Multi-display: move it onto the screen the user is on. A freshly-launched
             // window's Accessibility element lags the window-server list, so if we can't
             // read its frame yet, keep polling rather than abandoning the move (which
@@ -169,6 +168,21 @@ extension Launcher {
                       let frame = WindowAX.frame(of: axWindow) else { return false }
                 if let moved = DisplayPlacement.reposition(window: frame, displays: displays, active: active) {
                     WindowAX.setFrame(moved, of: axWindow)
+                    guard let actual = WindowAX.frame(of: axWindow),
+                          active.contains(CGPoint(x: actual.midX, y: actual.midY)) else { return false }
+                }
+            }
+            if !fresh.isOn(destination) {
+                // 新实例独占一个进程时才可使用进程级分配；不能搬走旧窗口。
+                guard attemptedSpaceMoves.insert(fresh.windowID).inserted,
+                      snapshot.realWindows(of: target).filter({ $0.pid == fresh.pid }).count == 1,
+                      (try? WindowSpaceMover.assign(pid: fresh.pid, to: destination,
+                                                    confirmedSpaces: { _ in
+                          let current = try? provider.snapshot()
+                          return Set(current?.windows(of: target)
+                              .first(where: { $0.windowID == fresh.windowID })?.spaceIDs ?? [])
+                      })) != nil else {
+                    return false
                 }
             }
             // Bring the new window forward (it's on the current Space → no yank).
@@ -183,7 +197,11 @@ extension Launcher {
         // exists anywhere did the strategy truly fail. If we can't read the window
         // world, assume success so we never warn spuriously.
         guard let snapshot = try? provider.snapshot() else { return true }
-        return snapshot.windows(of: target).contains { !existing.contains($0.windowID) }
+        let appeared = snapshot.realWindows(of: target).contains { !existing.contains($0.windowID) }
+        if appeared, targetSpace != nil {
+            _ = warned(target, "opened a window, but it could not be moved to this desktop.")
+        }
+        return appeared
     }
 
     // MARK: - Quit the app entirely, then relaunch on the current Space
