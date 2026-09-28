@@ -516,11 +516,8 @@ final class Preferences: ObservableObject {
     var windowLayoutInterception: Bool { get { bln(K.windowLayoutInterception) } set { setBln(newValue, K.windowLayoutInterception) } }
     /// 多窗口应用在程序坞里的呈现方式：拆分（每窗口一图标）或合并（每应用一图标，
     /// 窗口数用圆点表示）。合并模式下不再显示窗口数量角标，避免重复表达。
-    /// 激活应用时把它的窗口搬到当前桌面。
-    ///
-    /// 适用于任何「已经运行在其它桌面」的应用：Spotlight、程序坞、任何启动方式激活它时，
-    /// 把它的窗口搬过来而不是让你切过去。需要系统设置里关闭
-    /// 「切换到应用程序时，切换到有打开窗口的空间」，否则系统会先跳转。
+    /// 遗留配置字段：保留旧文件兼容，外部激活已不再触发自动搬移。
+    /// 输入和输出为旧布尔值；PS Dock 的按应用策略独立生效。
     var moveActivatedAppToCurrentDesktop: Bool {
         get { bln(K.moveActivatedAppToCurrentDesktop) }
         set { setBln(newValue, K.moveActivatedAppToCurrentDesktop) }

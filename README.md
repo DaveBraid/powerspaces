@@ -10,7 +10,7 @@ PS automatically reduces the effective icon size, spacing and glass thickness wh
 
 # powerspaces
 
-On macOS 27, successful PS moves to another desktop overwrite the app’s native Dock desktop assignment, including activation-based moves when enabled. The new assignment survives quitting and relaunching the app. For apps using “Move to this desktop”, a cold launch also updates the assignment before opening in the background, confirms the process belongs to the clicked desktop, and then activates it. PS updates both the saved desktop UUID and the current session binding; it does not keep a separate competing assignment file.
+On macOS 27, a successful move initiated from the PS Dock overwrites the app’s native Dock desktop assignment. The new assignment survives quitting and relaunching the app. For apps using “Move to this desktop”, a cold launch also updates the assignment before opening in the background, confirms the process belongs to the clicked desktop, and then activates it. Opening an app from its menu bar item or another external entry keeps the app’s native behavior; the PS Dock only refreshes its displayed state. PS updates both the saved desktop UUID and the current session binding; it does not keep a separate competing assignment file.
 
 **This fork:** macOS 27, English / 简体中文, and native Liquid Glass. [中文 README](README.zh-CN.md) · [Build and installation guide (中文)](docs/zh-CN.md).
 

@@ -23,86 +23,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var dockReservations = DockReservationStore(docks: { [weak self] in
         self?.docks.values.compactMap { $0.layoutReservation() } ?? []
     })
-    /// 激活应用时把它的窗口搬到当前桌面（需系统设置关闭「切换空间」）。
-    private lazy var activatedAppMover = ActivatedAppMover(
-        isEnabled: { Preferences.shared.moveActivatedAppToCurrentDesktop },
-        spaceRecentlyChanged: { [weak self] in
-            // 直接比较 Space ID：与上次判定时的 Space 不同，说明这次前台变化伴随切桌面。
-            guard let self, let current = try? self.provider.snapshot().activeSpaceID else { return true }
-            return current != self.lastCheckedSpaceID
-        },
-        focusMovedWindow: { [weak self] windowID, pid in
-            // 激活事件过时或用户已切到别的应用时，不抢回焦点。
-            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
-            _ = self?.launcher.focusMovedWindow(windowID: windowID, pid: pid)
-        })
-
-    /// PS 程序坞发起的「搬到本桌面」由启动队列负责；随后到达的激活通知不再重复搬往主屏。
-    private var pendingDockMove: (bundleID: String, time: TimeInterval)?
-
-    /// 在已有轮询里检测前台变化：必要时把该应用的窗口搬到当前桌面。
-    ///
-    /// 不使用 `NSWorkspace.didActivateApplicationNotification`——本机（macOS 27）实测该通知
-    /// 与 space 变化通知都不送达，独立进程亦然。这里复用的是既有的有限轮询，
-    /// 不新增计时器；只在前台 pid 真正变化时才做后续判定。
-    private func detectForegroundChange() {
-        let front = NSWorkspace.shared.frontmostApplication
-        let change = ActivatedAppMover.ForegroundChange(
-            previousPID: lastForegroundPID,
-            currentPID: front?.processIdentifier,
-            ownPID: getpid())
-        lastForegroundPID = front?.processIdentifier
-        guard change.isNewActivation, let app = front else { return }
-        moveActivatedAppIfNeeded(
-            target: AppTarget(bundleID: app.bundleIdentifier, name: app.localizedName),
-            pid: app.processIdentifier)
-    }
-
-    /// 判定并（必要时）搬移；结果只记录，不打扰用户。
-    private func moveActivatedAppIfNeeded(target: AppTarget, pid: pid_t) {
-        if let pendingDockMove, let bundleID = target.bundleID,
-           bundleID.caseInsensitiveCompare(pendingDockMove.bundleID) == .orderedSame,
-           ProcessInfo.processInfo.systemUptime - pendingDockMove.time < 3 {
-            return
-        }
-        guard Preferences.shared.moveActivatedAppToCurrentDesktop,
-              let snapshot = try? provider.snapshot() else { return }
-        // 确认读数取自真实 provider：搬移后必须复核窗口确实落到当前桌面。
-        // `spaces(forPID:)` 是 CGSSpaceProvider 的具体能力（协议上没有），
-        // 转换在应用层完成，SpaceKit 保持对协议的依赖。
-        guard let concrete = provider as? CGSSpaceProvider else { return }
-        let confirm: (pid_t) -> Set<SpaceID> = { concrete.spaces(forPID: $0) }
-        // 记下本次判定所在的 Space：下次前台变化若 Space 不同，就是切桌面而非激活。
-        lastCheckedSpaceID = snapshot.activeSpaceID
-        // 诊断落盘：无法复现用户现场时，用于回看每一次激活的判定依据。
-        WindowLayoutDiagnostics.record(
-            "activated-app app=\(target.bundleID ?? target.name ?? "?") space=\(snapshot.activeSpaceID) "
-            + "windows=\(snapshot.windows(of: target).map { "\($0.windowID):\($0.spaceIDs)" })")
-        let outcome = activatedAppMover.consider(
-            .init(activeSpaceID: snapshot.activeSpaceID, target: target, pid: pid,
-                  confirmSpaces: confirm),
-            snapshot: snapshot)
-        WindowLayoutDiagnostics.record("activated-app outcome=\(outcome)")
-        switch outcome {
-        case .moved:
-            Log.debug("Activated-app move: \(target.bundleID ?? target.name ?? "?") → space \(snapshot.activeSpaceID)")
-        case .assignmentNotSaved:
-            Log.error("Activated-app move succeeded, but desktop assignment was not saved")
-        case .notMoved:
-            // 搬不动就什么都不做：不跳桌面、不关窗口、不重试。
-            Log.error("Activated-app move failed for \(target.bundleID ?? target.name ?? "?")")
-        case .movedAndSwitchedBack:
-            // 搬移完成，但应用自己抢了桌面，已切回用户原本所在的桌面（一次可见闪动）。
-            Log.debug("Activated-app move: \(target.bundleID ?? target.name ?? "?") — switched the desktop back")
-        case .disabled, .unavailable, .spaceChanged, .alreadyHere:
-            break
-        }
-    }
-    /// 上一次做激活判定时所在的 Space。前台变化若伴随 Space 变化（用户切桌面），一律不搬。
-    private var lastCheckedSpaceID: SpaceID?
-    /// 上一次轮询看到的前台 pid；用于在轮询里识别"前台换了应用"。
-    private var lastForegroundPID: pid_t?
-
     /// 提前接管窗口布局操作（Option＋绿色按钮、标题栏双击、Fn＋Control 快捷键、
     /// 窗口菜单布局项）。默认关闭；无法可靠识别时一律放行原操作。
     private lazy var layoutInterceptor = WindowLayoutInterceptor(reservations: dockReservations)
@@ -571,10 +491,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
-        if !jump, config.strategy(for: app.bundleID) == .moveHere,
-           let bundleID = app.bundleID {
-            pendingDockMove = (bundleID, ProcessInfo.processInfo.systemUptime)
-        }
         // 每窗口图标使用精确窗口；普通图标走智能启动，两者共用点击屏幕的目标。
         let bounds = target.bounds
         let dockSpace = target.spaceID
@@ -927,7 +843,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 耗时的 CGS／AX 快照由单独串行队列读取；只允许一个在途任务，事件刷新使旧结果失效。
     private func pollTick() {
         guard !pollSnapshotInFlight else { scheduleNextPoll(); return }
-        detectForegroundChange()
         let generation = refreshGeneration
         let pinnedBundleIDs = pins.allPinnedBundleIDs()
         pollSnapshotInFlight = true
@@ -996,34 +911,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DistributedNotificationCenter.default().addObserver(
             self, selector: #selector(systemDisplaySettingsChanged),
             name: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil)
-        // 前台激活通知：本机实测该通知只在「前台真的换人」时送达（同一应用重复激活不送），
-        // 因此它比轮询更早、更准。落盘时序用于判断能否抢在系统切桌面之前搬移。
-        nc.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
-                       object: nil, queue: .main) { [weak self] note in
-            guard let self else { return }
-            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            // 记录通知到达瞬间的 Space 与目标应用窗口归属：判断能否抢在系统切桌面之前搬移。
-            let space = (try? self.provider.snapshot().activeSpaceID).map(String.init) ?? "?"
-            var windows = "?"
-            if let app {
-                let target = AppTarget(bundleID: app.bundleIdentifier, name: app.localizedName)
-                if let snap = try? self.provider.snapshot() {
-                    windows = "\(snap.windows(of: target).map { "\($0.windowID):\($0.spaceIDs)" })"
-                }
-            }
-            WindowLayoutDiagnostics.record(
-                "activated-app NOTIFY app=\(app?.bundleIdentifier ?? "?") pid=\(app?.processIdentifier ?? -1) "
-                + "space=\(space) windows=\(windows)")
-            guard let app, app.processIdentifier != getpid() else { return }
-            self.moveActivatedAppIfNeeded(
-                target: AppTarget(bundleID: app.bundleIdentifier, name: app.localizedName),
-                pid: app.processIdentifier)
-        }
-        // 桌面变化也要有时序记录，才能和上面的激活时刻对照。
-        nc.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
-                       object: nil, queue: .main) { _ in
-            WindowLayoutDiagnostics.record("activated-app SPACE-CHANGED-NOTIFY")
-        }
+        // 状态栏等外部入口只刷新程序坞；搬移与聚焦只由程序坞点击的启动路径发起。
         // Window open/close don't post workspace notifications; poll lightly at
         // the user's chosen interval.
         restartPoll()
@@ -1101,7 +989,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refresh(using suppliedSnapshot: SpaceSnapshot? = nil, appNames: [String: String]? = nil) -> Bool {
         refreshGeneration &+= 1 // 新事件／显式刷新不能被较早的后台读数覆盖。
         guard let snapshot = suppliedSnapshot ?? (try? provider.snapshot()) else { return false }
-        // 记录 Space 是否刚变过：切桌面时前台应用也会变，自动搬移必须把那种情况排除。
         // Pids that own at least one window this tick — the shared basis for both
         // window-less treatments (reaping idle instances, and the window-less dock
         // items). Computed once here rather than in each helper.
