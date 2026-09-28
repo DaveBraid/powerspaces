@@ -149,39 +149,55 @@ extension Launcher {
         let displays = trusted ? DisplayInfo.allDisplayBounds() : []
         let active = preferredDisplay ?? DisplayInfo.activeDisplayBounds()
         let needsMove = trusted && displays.count > 1 && active != nil
-        var attemptedSpaceMoves: Set<CGWindowID> = []
+        var nextSpaceMoveAt: [CGWindowID: TimeInterval] = [:]
+        var placementFailure = "window-not-found"
+        var observedWindowID: CGWindowID?
 
         // 新进程可能先在另一个显示器的 Space 创建窗口；只按目标 Space 筛选会漏掉它。
-        let placedHere = pollUntil(timeout: 3.0, interval: 80_000) {
+        let attemptPlacement = {
             guard let snapshot = try? provider.snapshot() else { return false }
             let destination = targetSpace ?? snapshot.activeSpaceID
             let freshWindows = snapshot.realWindows(of: target).filter { !existing.contains($0.windowID) }
             guard let fresh = freshWindows.first(where: { $0.isOn(destination) }) ?? freshWindows.first else {
                 return false
             }
+            observedWindowID = fresh.windowID
             // Multi-display: move it onto the screen the user is on. A freshly-launched
             // window's Accessibility element lags the window-server list, so if we can't
             // read its frame yet, keep polling rather than abandoning the move (which
             // left a cold-launched app on the OS default screen, not the dock's screen).
             if needsMove, let active {
-                guard let axWindow = WindowAX.axWindow(windowID: fresh.windowID, pid: fresh.pid),
-                      let frame = WindowAX.frame(of: axWindow) else { return false }
+                guard let axWindow = WindowAX.axWindow(windowID: fresh.windowID, pid: fresh.pid) else {
+                    placementFailure = "ax-window-unavailable"
+                    return false
+                }
+                guard let frame = WindowAX.frame(of: axWindow) else {
+                    placementFailure = "ax-frame-unavailable"
+                    return false
+                }
                 if let moved = DisplayPlacement.reposition(window: frame, displays: displays, active: active) {
                     WindowAX.setFrame(moved, of: axWindow)
                     guard let actual = WindowAX.frame(of: axWindow),
-                          active.contains(CGPoint(x: actual.midX, y: actual.midY)) else { return false }
+                          active.contains(CGPoint(x: actual.midX, y: actual.midY)) else {
+                        placementFailure = "ax-position-rejected"
+                        return false
+                    }
                 }
             }
             if !fresh.isOn(destination) {
                 // 新实例独占一个进程时才可使用进程级分配；不能搬走旧窗口。
-                guard attemptedSpaceMoves.insert(fresh.windowID).inserted,
-                      snapshot.realWindows(of: target).filter({ $0.pid == fresh.pid }).count == 1,
+                let now = ProcessInfo.processInfo.systemUptime
+                guard snapshot.realWindows(of: target).filter({ $0.pid == fresh.pid }).count == 1,
+                      now >= nextSpaceMoveAt[fresh.windowID, default: 0],
                       (try? WindowSpaceMover.assign(pid: fresh.pid, to: destination,
                                                     confirmedSpaces: { _ in
                           let current = try? provider.snapshot()
                           return Set(current?.windows(of: target)
                               .first(where: { $0.windowID == fresh.windowID })?.spaceIDs ?? [])
                       })) != nil else {
+                    // 新实例的 Space 归属可能晚于窗口出现；短暂退避后允许再次确认。
+                    nextSpaceMoveAt[fresh.windowID] = now + 0.6
+                    placementFailure = "space-assignment-unavailable"
                     return false
                 }
             }
@@ -189,7 +205,16 @@ extension Launcher {
             if focus { raise(windowID: fresh.windowID, pid: fresh.pid, activateApp: activateApp) }
             return true
         }
+        var placedHere = pollUntil(timeout: 3.0, interval: 80_000, attemptPlacement)
+        if !placedHere, observedWindowID != nil, needsMove {
+            // 新窗口已出现但 AX 尚未就绪时，额外等待一次；无窗口的应用仍保持原超时。
+            placedHere = pollUntil(timeout: 5.0, interval: 160_000, attemptPlacement)
+        }
         if placedHere { return true }
+
+        WindowLayoutDiagnostics.record("new-window-placement target=\(target.bundleID ?? "?") "
+            + "space=\(targetSpace.map(String.init) ?? "active") window=\(observedWindowID.map(String.init) ?? "none") "
+            + "reason=\(placementFailure) trusted=\(trusted) displays=\(displays.count)")
 
         // Nothing reached the current Space within the timeout. On a multi-display
         // setup the app may still have opened the window on another screen's Space —
