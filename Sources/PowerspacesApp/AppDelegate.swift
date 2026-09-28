@@ -214,12 +214,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// window — leaving the process running but window-less. We can't make such an
     /// app keep a second window, so when we detect it we warn the user and point
     /// them at a strategy that does work (see `verifyNewWindowLanded`).
-    private func runLaunch(target: AppTarget, _ action: @escaping (Launcher) -> LaunchOutcome?) {
+    private func runLaunch(target: AppTarget, launchSpace targetSpace: SpaceID? = nil,
+                           _ action: @escaping (Launcher) -> LaunchOutcome?) {
         // The Space we're launching onto, read on the main actor before the hop. The
         // check below compares against *this* Space (not whichever is active later),
         // so it stays correct even if the user switches desktops during the wait.
         // (`currentSpaceID` isn't on the `SpaceProviding` seam; the snapshot carries it.)
-        let launchSpace = (try? provider.snapshot())?.activeSpaceID
+        let launchSpace = targetSpace ?? (try? provider.snapshot())?.activeSpaceID
         let launcher = UnsafeTransfer(self.launcher)
         let action = UnsafeTransfer(action)
         launcherQueue.async { [weak self] in
@@ -430,29 +431,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         dock.onSelect = { [weak self] app, forceNew, jump in
-            guard let self else { return }
-            if !jump, self.config.strategy(for: app.bundleID) == .moveHere,
-               let bundleID = app.bundleID {
-                self.pendingDockMove = (bundleID, ProcessInfo.processInfo.systemUptime)
-            }
-            // A per-window icon ("Windows" feature) carries the exact window to
-            // act on; a normal icon routes through the smart-launch decision. The
-            // dock's own display is the preferred screen for a new window, and its
-            // visible desktop is what the click judges "here" against.
-            let bounds = self.bounds(forDisplay: displayUUID)
-            let dockSpace = self.currentSpaceID(forDisplay: displayUUID)
-            self.runLaunch(target: app.target) { launcher in
-                if app.isFullscreenItem, !forceNew, let windowID = app.windowID, let pid = app.pid {
-                    return try? launcher.focusFullscreenWindow(windowID: windowID, pid: pid, target: app.target)
-                }
-                if let windowID = app.windowID, let pid = app.pid {
-                    return try? launcher.dockClickWindow(windowID: windowID, pid: pid,
-                                                         target: app.target, forceNew: forceNew,
-                                                         preferredDisplay: bounds, dockSpace: dockSpace)
-                }
-                return try? launcher.dockClick(target: app.target, forceNew: forceNew, jump: jump,
-                                               preferredDisplay: bounds, dockSpace: dockSpace)
-            }
+            self?.selectDockApp(app, forceNew: forceNew, jump: jump, displayUUID: displayUUID)
         }
         dock.onPinHere = { [weak self] app in
             guard let self, let uuid = self.spaceUUID(forDisplay: displayUUID),
@@ -548,15 +527,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             docks[info.displayUUID] = dock
             dock.applyAppearance()
         }
+        // 同一 UUID 的显示器也可能换了数值 ID；保留 Dock 实例并更新物理绑定。
+        for info in desired {
+            guard let dock = docks[info.displayUUID], let screen = screen(forDisplay: info) else { continue }
+            dock.rebind(to: screen)
+        }
     }
 
-    /// The `NSScreen` for a display info, matched by UUID, falling back to its
-    /// global bounds (in case the window-server UUID and Core Graphics UUID differ).
+    /// 用稳定 UUID 找屏幕；仅在 NSScreen 无法读取 UUID 时按非零边界回退。
     private func screen(forDisplay info: DisplaySpaceInfo) -> NSScreen? {
         if let byUUID = NSScreen.screens.first(where: { $0.displayUUID == info.displayUUID }) {
             return byUUID
         }
-        return NSScreen.screens.first { CGDisplayBounds($0.displayID) == info.bounds }
+        guard info.bounds != .zero else { return nil }
+        return NSScreen.screens.first { $0.displayUUID == nil && CGDisplayBounds($0.displayID) == info.bounds }
+    }
+
+    /// 点击时读取同一块物理屏幕的实时边界与可见 Space；不把失效目标降级为主屏。
+    /// 输入为 Dock 的显示器 UUID；输出为新窗口的目标矩形与 Space，缺失时返回 nil。
+    private func liveDockTarget(forDisplay uuid: String) -> (bounds: CGRect, spaceID: SpaceID)? {
+        guard let display = provider.displays().first(where: { $0.displayUUID == uuid }),
+              let screen = screen(forDisplay: display),
+              display.currentSpaceID != 0 else { return nil }
+        let bounds = CGDisplayBounds(screen.displayID)
+        guard bounds != .zero else { return nil }
+        return (bounds, display.currentSpaceID)
+    }
+
+    /// 从点击屏幕读取目标后执行 Dock 动作；显示器正切换时只延迟重试一次。
+    /// 输入为图标、修饰键和显示器 UUID；输出为启动队列中的一次操作或明确提示。
+    private func selectDockApp(_ app: DockApp, forceNew: Bool, jump: Bool,
+                               displayUUID: String, retry: Bool = true) {
+        // 旧刷新缓存不能决定新建窗口的屏幕与桌面。
+        guard let target = liveDockTarget(forDisplay: displayUUID) else {
+            if retry {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                    guard let self, self.docks[displayUUID] != nil else { return }
+                    self.selectDockApp(app, forceNew: forceNew, jump: jump,
+                                       displayUUID: displayUUID, retry: false)
+                }
+            } else {
+                HUD.show(L10n.string("The display is still updating. Try again in a moment."))
+            }
+            return
+        }
+        if !jump, config.strategy(for: app.bundleID) == .moveHere,
+           let bundleID = app.bundleID {
+            pendingDockMove = (bundleID, ProcessInfo.processInfo.systemUptime)
+        }
+        // 每窗口图标使用精确窗口；普通图标走智能启动，两者共用点击屏幕的目标。
+        let bounds = target.bounds
+        let dockSpace = target.spaceID
+        runLaunch(target: app.target, launchSpace: dockSpace) { launcher in
+            if app.isFullscreenItem, !forceNew, let windowID = app.windowID, let pid = app.pid {
+                return try? launcher.focusFullscreenWindow(windowID: windowID, pid: pid, target: app.target)
+            }
+            if let windowID = app.windowID, let pid = app.pid {
+                return try? launcher.dockClickWindow(windowID: windowID, pid: pid,
+                                                     target: app.target, forceNew: forceNew,
+                                                     preferredDisplay: bounds, dockSpace: dockSpace)
+            }
+            return try? launcher.dockClick(target: app.target, forceNew: forceNew, jump: jump,
+                                           preferredDisplay: bounds, dockSpace: dockSpace)
+        }
     }
 
     /// The visible-Space UUID of a display (for pin lookups), from the last refresh.
@@ -1072,9 +1105,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Pids that own at least one window this tick — the shared basis for both
         // window-less treatments (reaping idle instances, and the window-less dock
         // items). Computed once here rather than in each helper.
+        let displays = provider.displays()
+        guard !displays.isEmpty else { return false } // 热插拔期间的空读数不能拆掉所有 Dock。
         let pidsWithWindows = Set(snapshot.windows.map(\.pid))
         reapWindowlessInstances(pidsWithWindows: pidsWithWindows)
-        let displays = provider.displays()
         let openWindows = DockModel.openWindows(in: snapshot, visibleSpaces: Set(displays.map(\.currentSpaceID)))
         let pidsWithOpenWindows = Set(openWindows.map(\.pid))
         let bundlesWithWindows = Set(openWindows.compactMap(\.bundleID))

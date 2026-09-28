@@ -705,3 +705,5 @@
 "When you click one of these apps while its window is on another desktop, Powerspaces will quit and reopen it here. Unsaved work or playback in that app may be lost. This selection does not quit any app now." = "今后点击这些应用时，若其窗口在其他桌面，PS 将退出应用并在本桌面重新打开，可能丢失未保存的内容或播放进度。此选择不会立即退出任何应用。";
 
 "Use this behavior" = "使用此行为";
+
+"The display is still updating. Try again in a moment." = "显示器仍在切换，请稍后重试。";

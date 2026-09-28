@@ -126,8 +126,9 @@ extension Launcher {
         // Land the fresh window on the dock's screen (multi-display), same as
         // `newWindow`. Without this a cold launch opened on the OS default screen, so
         // clicking a *closed* app in a second screen's dock opened it on the main one.
+        // 普通冷启动也要沿用点击屏幕的 Space，不能仅在 moveHere 策略下传目标。
         placeNewWindowHere(target, existing: existing, preferredDisplay: preferredDisplay, focus: true,
-                           targetSpace: assignedSpace)
+                           targetSpace: assignedSpace ?? targetSpace)
         return .launched
     }
 

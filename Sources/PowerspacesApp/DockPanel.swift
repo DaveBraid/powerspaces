@@ -160,10 +160,11 @@ final class DockPanel: NSPanel {
     /// display — don't fight over `NSScreen.main`.
     nonisolated(unsafe) private var badgeObserver: NSObjectProtocol?
     nonisolated(unsafe) private var occlusionObserver: NSObjectProtocol?
-    let boundDisplayID: CGDirectDisplayID
+    private(set) var boundDisplayID: CGDirectDisplayID
+    private let boundDisplayUUID: String?
 
-    /// The live `NSScreen` for `boundDisplayID`, re-resolved each use so it survives
-    /// display reconfiguration (NSScreen objects are recreated then). Returns nil — so
+    /// The live `NSScreen` for this display's UUID; Core Graphics may change its
+    /// numeric display ID after a monitor switch. Returns nil — so
     /// callers SKIP positioning — when the bound display is momentarily missing (e.g.
     /// `NSScreen.screens` is still being rebuilt while waking from sleep or attaching
     /// a monitor). It must NOT fall back to `NSScreen.main`: that would place this
@@ -171,11 +172,15 @@ final class DockPanel: NSPanel {
     /// pulls it back until relaunch. When the display returns, the follow-up
     /// screen-change event repositions the dock onto it.
     var boundScreen: NSScreen? {
-        NSScreen.screens.first { $0.displayID == boundDisplayID }
+        if let boundDisplayUUID {
+            return NSScreen.screens.first { $0.displayUUID == boundDisplayUUID }
+        }
+        return NSScreen.screens.first { $0.displayID == boundDisplayID }
     }
 
     init(screen: NSScreen) {
         self.boundDisplayID = screen.displayID
+        self.boundDisplayUUID = screen.displayUUID
         super.init(contentRect: NSRect(x: 0, y: 0, width: 120, height: 64),
                    styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
@@ -2217,6 +2222,15 @@ final class DockPanel: NSPanel {
         // `placedOrigin` keeps a tucked-away (auto-hidden) bar off-screen, so a
         // content rebuild from the poll doesn't yank it back into view.
         setFrameOrigin(placedOrigin(forSize: frame.size, on: screen))
+    }
+
+    /// 显示器重组后更新数值 ID，并按原 UUID 对应的屏幕重新定位。
+    /// 输入是当前 NSScreen；输出为面板位置更新，UUID 不符时不改绑定。
+    func rebind(to screen: NSScreen) {
+        guard boundDisplayUUID == nil || screen.displayUUID == boundDisplayUUID,
+              boundDisplayID != screen.displayID else { return }
+        boundDisplayID = screen.displayID
+        reposition()
     }
 
     /// Where the panel's origin goes for a given size, per bar position.

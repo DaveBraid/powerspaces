@@ -705,3 +705,5 @@
 "When you click one of these apps while its window is on another desktop, Powerspaces will quit and reopen it here. Unsaved work or playback in that app may be lost. This selection does not quit any app now." = "When you click one of these apps while its window is on another desktop, Powerspaces will quit and reopen it here. Unsaved work or playback in that app may be lost. This selection does not quit any app now.";
 
 "Use this behavior" = "Use this behavior";
+
+"The display is still updating. Try again in a moment." = "The display is still updating. Try again in a moment.";

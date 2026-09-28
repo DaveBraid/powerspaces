@@ -542,7 +542,6 @@ final class DockButton: NSButton {
     /// it composes with (and magnifies under) the hover transform without fighting
     /// the hover highlight, which lives on the button's own layer.
     private var boxLayer: CALayer?
-    private var badgeRemovalGeneration = 0
     private var boxActive = false
     private var boxGap: CGFloat = 0
     private var boxOutlineWidth: CGFloat = 2
@@ -680,42 +679,17 @@ final class DockButton: NSButton {
     /// 空值移除，其他文本原样保留；只更新覆盖层，不重建按钮或中断交互。
     func setNotificationBadge(_ text: String?) {
         guard let text, !text.isEmpty else {
-            guard let badge = notificationBadge else { return }
-            badgeRemovalGeneration &+= 1
-            let generation = badgeRemovalGeneration
-            guard !SystemDisplay.reduceMotion else {
-                badge.removeFromSuperview()
-                notificationBadge = nil
-                return
-            }
-            NSAnimationContext.runAnimationGroup({ context in
-                context.duration = 0.16
-                badge.animator().alphaValue = 0
-            }, completionHandler: { [weak self, weak badge] in
-                MainActor.assumeIsolated {
-                    guard let self, let badge, self.notificationBadge === badge,
-                          self.badgeRemovalGeneration == generation else { return }
-                    badge.removeFromSuperview()
-                    self.notificationBadge = nil
-                }
-            })
+            notificationBadge?.removeFromSuperview()
+            notificationBadge = nil
             return
         }
-        badgeRemovalGeneration &+= 1
         if notificationBadge == nil {
             let badge = DockBadgeView()
             badge.setAccessibilityElement(false)
-            badge.alphaValue = SystemDisplay.reduceMotion ? 1 : 0
             addSubview(badge)
             notificationBadge = badge
         }
         notificationBadge?.text = text
-        if let badge = notificationBadge, badge.alphaValue < 1 {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.18
-                badge.animator().alphaValue = 1
-            }
-        }
         needsLayout = true
     }
 
