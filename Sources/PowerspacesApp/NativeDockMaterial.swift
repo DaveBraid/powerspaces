@@ -45,8 +45,10 @@ final class NativeDockRecipe {
             return fail("Cannot read system build")
         }
         var build = [CChar](repeating: 0, count: count)
+        // 每个构建都需独立复核 ABI、后台高光和透光恢复；补丁版本也不能自动放行。
+        let verifiedBuilds: Set<String> = ["26A428", "26A434"]
         guard sysctlbyname("kern.osversion", &build, &count, nil, 0) == 0,
-              String(cString: build) == "26A428" else { return fail("Unverified system build") }
+              verifiedBuilds.contains(String(cString: build)) else { return fail("Unverified system build") }
         // 保持框架在进程生命周期内加载，缓存材质可能仍引用其协议见证表。
         guard let design = dlopen("/System/Library/PrivateFrameworks/DesignLibrary.framework/DesignLibrary", RTLD_LAZY | RTLD_LOCAL),
               let core = dlopen("/System/Library/Frameworks/SwiftUICore.framework/SwiftUICore", RTLD_LAZY | RTLD_LOCAL),

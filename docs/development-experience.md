@@ -37,13 +37,15 @@
 - 动态扩容必须同时更新窗口、玻璃和原生 contentView。实机曾测到外层宽 694 点、前景仅 629 点，造成右侧标题裁切；仅加宽按钮无法修复。
 - 缩放时不能用变化中的玻璃中心定位图标组；应固定外侧边缘约束，圆点使用独立几何图形并按实际图标中心定位。四边停靠的实测应分别比较屏幕 y / x 坐标，避免字体字形基线造成假对齐。
 
-### 原生 Dock 配方的正式接入（26A428）
+### 原生 Dock 配方的正式接入（26A428 / 26A434）
 
 - 独立原型及失活日志证实 `DesignLibrary.GlassMaterialProvider.Configuration.dock` 可通过 SwiftUI Material 渲染；关键是私有 `EnvironmentValues.windowAppearsActive = true`。普通 `appearsActive`、`materialActiveAppearance(.active)` 不等价；不得用激活 PS 或伪造 keyWindow 来补偿。
 - `NativeDockMaterial.swift` 只托管背景。Swift 私有调用隔离在 `CDockMaterial`，使用 Clang 的 `swiftcall`、`swift_indirect_result`、`swift_context` 标注真实调用约定；所有函数动态解析，不静态绑定私有 setter。参见 [Clang 调用约定说明](https://clang.llvm.org/docs/AttributeReference.html#swiftcall)。初始化器消费输入值，释放原始存储时不能再次析构。
-- 只启用 Apple Silicon / macOS 27.0 构建 `26A428`，同时检查完整元数据、Configuration 216 字节、Provider 328 字节、Material 17 字节／stride 24、EnvironmentValues 16 字节及 8 字节对齐、MaterialProvider 见证表、环境 false/true 回读。系统升级后先重新验证，不能只扩大版本条件。
+- 只启用 Apple Silicon / macOS 27.0 构建 `26A428` 与 27.0.1 构建 `26A434`，同时检查完整元数据、Configuration 216 字节、Provider 328 字节、Material 17 字节／stride 24、EnvironmentValues 16 字节及 8 字节对齐、MaterialProvider 见证表、环境 false/true 回读。系统升级后先重新验证，不能只扩大版本条件。
 - 渲染后再核对真实 `CASDFKeyFillHighlightEffect` 的图层 opacity、颜色 alpha 和背景滤镜，最多三次延后验证；失败则永久回退该视图的公开玻璃。背景滤镜和渲染树通过观察与布局事件维护，高光仅做只读验证，无持续轮询。
 - 正式桥接实测：应用后台／非 key 窗口、480→580 点宽度、浅→深色后高光保持；透光率 0／40／80／100% 及恢复原值通过；原生高光强度和宽度不变、AppKit 命中、纯色切换与公开材质回退通过。此结论不等于取得系统 Dock 的完整实时参数。
+
+- **系统升级与裁切（27.0.1 / 26A434）**：精确构建白名单会使新系统回退公开玻璃，不能据此认定 `.dock` ABI 已改变；新构建独立元数据检查与后台渲染均通过，尺寸仍为 216 / 328 / 17 / 16 字节。公开 `NSGlassEffectView.contentView` 的内部层可能裁切越界的放大图标，仅关闭外包装裁切不足。Dock 前景始终作为玻璃的同级容器，设置页仍使用系统 contentView；`--check-dock-layout --public-glass` 覆盖公开回退的四方向缩放。
 
 - 从 `NSGlassEffectView.contentView` 迁回普通 AppKit 容器时，恢复 `translatesAutoresizingMaskIntoConstraints` 和尺寸管理；原生容器会改变布局模式，仅设置 frame 会导致前景偏移。用同尺寸双材质实机对照及容器 bounds 检查验证。
 

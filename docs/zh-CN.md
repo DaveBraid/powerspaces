@@ -16,7 +16,7 @@
 
 ## Liquid Glass
 
-已验证的 Apple Silicon / macOS 27.0（26A428）程序坞使用 DesignLibrary `.dock` 原生配方；仅覆盖 SwiftUI 材质的窗口活跃外观，不改变 AppKit 焦点。系统构建、ABI 或渲染验证不通过时自动回退现有公开玻璃。设置窗口保持公开材质。
+已验证的 Apple Silicon / macOS 27.0（26A428）与 27.0.1（26A434）程序坞使用 DesignLibrary `.dock` 原生配方；仅覆盖 SwiftUI 材质的窗口活跃外观，不改变 AppKit 焦点。系统构建、ABI 或渲染验证不通过时自动回退现有公开玻璃。设置窗口保持公开材质。
 
 - macOS 26 及以上使用 AppKit 的 `NSGlassEffectView`，由系统绘制玻璃折射、边缘和明暗适配；macOS 14–15 回退原有模糊材质。
 - **程序坞 → 布局** 分别设置“背景材质”（液态玻璃／纯色）、“背景明暗”（跟随系统／浅色／深色）、玻璃的“着色强度”或纯色的“背景不透明度”（0–100%）。材质与明暗不再混为一个选项，自定义颜色不会覆盖明暗模式。
@@ -30,7 +30,7 @@
 
 ## 构建与检查
 
-主要适配环境：macOS 27.0（26A428）、Apple Silicon、Swift 6.4 / macOS 27 SDK。最低部署要求仍为 macOS 14；这不代表每个系统版本均已实机验证。
+主要适配环境：macOS 27.0.1（26A434）、Apple Silicon、Swift 6.4 / macOS 27 SDK。最低部署要求仍为 macOS 14；这不代表每个系统版本均已实机验证。
 
 ```bash
 cd /Users/ethanlee/projects/powerspaces

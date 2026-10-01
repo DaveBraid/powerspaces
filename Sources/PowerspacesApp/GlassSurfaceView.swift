@@ -134,7 +134,8 @@ final class GlassSurfaceView: NSView {
         // Dock 的光学层保持完整，浓度只调染色；不能把前景和高光一起淡出。
         alphaValue = hostsContent || SystemDisplay.reduceTransparency ? 1 : opacity
         if hostsContent {
-            if opaque || nativeEnabled {
+            if dockMode || opaque || nativeEnabled {
+                // 放大图标必须绕过 NSGlassEffectView 的内部裁切；公开回退也使用同级前景。
                 if glassContent.superview !== self {
                     if #available(macOS 26.0, *), let glass = surface as? NSGlassEffectView {
                         glass.contentView = nil
@@ -193,7 +194,7 @@ final class GlassSurfaceView: NSView {
         }
     }
 
-    /// 渲染探测失败后本视图不再重试私有材质，前景返回现有公开玻璃层。
+    /// 渲染探测失败后不再重试私有材质；前景仍独立于公开玻璃的内部裁切。
     private func fallBackToPublicGlass() {
         nativeDockFailed = true
         nativeDockSurface?.removeFromSuperview()
@@ -221,4 +222,3 @@ final class GlassSurfaceView: NSView {
 
     deinit { NSWorkspace.shared.notificationCenter.removeObserver(self) }
 }
-

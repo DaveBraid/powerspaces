@@ -194,6 +194,14 @@ enum DevelopmentTools {
         for position in [BarPosition.bottom, .top, .left, .right] {
             prefs.barPosition = position
             let panel = DockPanel(screen: screen)
+            if CommandLine.arguments.contains("--public-glass") {
+                /// 递归关闭测试面板的私有配方，覆盖真实公开回退路径。
+                func forceFallback(_ view: NSView) {
+                    (view as? GlassSurfaceView)?.allowsNativeDockMaterial = false
+                    view.subviews.forEach(forceFallback)
+                }
+                forceFallback(panel.contentView!) // 四向缩放也覆盖未知系统构建的公开回退。
+            }
             panel.update(apps: [
                 DockApp(bundleID: "one", name: "One", pid: 1, windowCount: 1, isPinnedHere: true),
                 DockApp(bundleID: "two", name: "Longer application title", pid: 2, windowCount: 1),
@@ -271,6 +279,9 @@ enum DevelopmentTools {
             panel.resetMagnification()
             let restored = zip(items, widths).allSatisfy { abs(($0.widthConstraint?.constant ?? 0) - $1) <= 1 } // AppKit 对标题宽度做点对齐。
             let unclipped = glass?.clipsToBounds == false && glass?.layer?.masksToBounds == false
+                && glass?.glassContent.superview === glass
+                && glass?.glassContent.clipsToBounds == false
+                && glass?.glassContent.layer?.masksToBounds != true
             let pass = before.count == 2 && after.count == 2 && fixed && grew && centered && geometryOK && restored && unclipped
             if !pass { failures += 1 }
             print("Dock anchors \(position): \(pass ? "PASS" : "FAIL") \(before) -> \(after)")
@@ -439,6 +450,7 @@ enum DevelopmentTools {
         surface.allowsNativeDockMaterial = false
         surface.layoutSubtreeIfNeeded()
         let fallbackOK = !surface.usesNativeDockMaterial && !button.isHiddenOrHasHiddenAncestor
+            && surface.glassContent.superview === surface && !surface.glassContent.clipsToBounds
             && surface.hitTest(surface.convert(NSPoint(x: 5, y: 5), from: button)) === button
         print("Public fallback: \(fallbackOK)")
         if !fallbackOK { failed = true }

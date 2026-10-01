@@ -139,4 +139,4 @@ swift run --build-system native PowerspacesApp --dump-window-layout   # 打印�
 - macOS 27 程序坞透光调节隔离于 `GlassBackgroundTuning.swift`，使用经探测的私有玻璃滤镜参数；保留版本限制、原值恢复及失效回退，不修改系统全局设置或增加定时轮询。设置窗口不使用该调节。
 - 外观设置分开维护材质、明暗与背景不透明度；运行 `--check-appearance` 检查旧配置兼容，系统“降低透明度”优先于应用滑块。
 
-- 原生 Dock 配方封装于 `NativeDockMaterial.swift` / `CDockMaterial`；私有 ABI 当前仅验证 Apple Silicon、macOS 27.0 构建 26A428。扩展白名单前必须重新核对类型布局和后台渲染；保持动态符号探测、公开材质回退及非激活面板行为。`--check-native-dock` 验证这条路径。
+- 原生 Dock 配方封装于 `NativeDockMaterial.swift` / `CDockMaterial`；私有 ABI 当前仅验证 Apple Silicon、macOS 27.0 / 26A428 与 27.0.1 / 26A434。扩展白名单前必须重新核对类型布局和后台渲染；保持动态符号探测、公开材质回退及非激活面板行为。`--check-native-dock` 验证这条路径。
